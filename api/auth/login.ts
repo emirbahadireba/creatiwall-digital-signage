@@ -41,9 +41,19 @@ function readDatabase(): Database {
       console.log('File system access failed, using fallback data');
     }
     
-    // Fallback with demo users
+    // Fallback with demo users - including a simple test user
     return {
       users: [
+        {
+          id: "simple-test-user",
+          tenantId: "tenant-demo-001",
+          email: "test@test.com",
+          password: "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBdXzgVrqZm9vO", // password: "password123"
+          firstName: "Test",
+          lastName: "User",
+          role: "tenant_admin",
+          createdAt: "2025-11-15T12:00:00.000Z"
+        },
         {
           id: "user-admin-001",
           tenantId: "tenant-demo-001",
