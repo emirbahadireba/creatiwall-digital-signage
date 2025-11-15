@@ -43,6 +43,31 @@ class ApiService {
     return response.json();
   }
 
+  // Authentication
+  async register(userData: { email: string; password: string; firstName: string; lastName: string; companyName: string }) {
+    return this.request<{ user: any; token: string }>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(userData),
+    });
+  }
+
+  async login(credentials: { email: string; password: string }) {
+    return this.request<{ user: any; token: string }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(credentials),
+    });
+  }
+
+  async logout() {
+    return this.request<void>('/auth/logout', {
+      method: 'POST',
+    });
+  }
+
+  async getCurrentUser() {
+    return this.request<any>('/auth/me');
+  }
+
   // Devices
   async getDevices() {
     return this.request<DeviceData[]>('/devices');
