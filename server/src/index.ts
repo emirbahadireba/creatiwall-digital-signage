@@ -8,15 +8,15 @@ import { fileURLToPath } from 'url';
 dotenv.config();
 
 // Import routes
-import devicesRouter from './routes/devices';
-import mediaRouter from './routes/media';
-import layoutsRouter from './routes/layouts';
-import playlistsRouter from './routes/playlists';
-import schedulesRouter from './routes/schedules';
-import widgetsRouter from './routes/widgets';
-import rssProxyRouter from './routes/rss-proxy';
-import weatherProxyRouter from './routes/weather-proxy';
-import authRouter from './routes/auth';
+import devicesRouter from './routes/devices.js';
+import mediaRouter from './routes/media.js';
+import layoutsRouter from './routes/layouts.js';
+import playlistsRouter from './routes/playlists.js';
+import schedulesRouter from './routes/schedules.js';
+import widgetsRouter from './routes/widgets.js';
+import rssProxyRouter from './routes/rss-proxy.js';
+import weatherProxyRouter from './routes/weather-proxy.js';
+import authRouter from './routes/auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

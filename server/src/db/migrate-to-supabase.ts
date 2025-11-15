@@ -1,203 +1,184 @@
-import fs from 'fs/promises';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { createClient } from '@supabase/supabase-js';
+import { database as jsonDatabase } from './database.js';
 import bcrypt from 'bcryptjs';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// Supabase configuration
+const supabaseUrl = process.env.SUPABASE_URL!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-interface JsonDatabase {
-  tenants: any[];
-  users: any[];
-  devices: any[];
-  mediaItems: any[];
-  layouts: any[];
-  zones: any[];
-  playlists: any[];
-  playlistItems: any[];
-  schedules: any[];
-  scheduleDevices: any[];
-  widgetTemplates: any[];
-  widgetInstances: any[];
-  userSessions: any[];
-  auditLogs: any[];
+if (!supabaseUrl || !supabaseServiceKey) {
+  console.error('❌ SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set');
+  process.exit(1);
 }
 
-async function loadJsonDatabase(): Promise<JsonDatabase> {
-  try {
-    const dbPath = path.join(__dirname, '../../../data/database.json');
-    const data = await fs.readFile(dbPath, 'utf-8');
-    return JSON.parse(data);
-  } catch (error) {
-    console.error('Error loading JSON database:', error);
-    throw error;
+const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
   }
-}
+});
 
-async function migrateTenants(supabase: any, tenants: any[]) {
-  console.log('Migrating tenants...');
-  
-  for (const tenant of tenants) {
-    const { error } = await supabase
-      .from('tenants')
-      .upsert({
+async function migrateData() {
+  console.log('🚀 Starting migration from JSON to Supabase...\n');
+
+  try {
+    // 1. Migrate Tenants
+    console.log('📋 Migrating tenants...');
+    if (jsonDatabase.tenants && jsonDatabase.tenants.length > 0) {
+      const tenants = jsonDatabase.tenants.map((tenant: any) => ({
         id: tenant.id,
         name: tenant.name,
         domain: tenant.domain,
-        subdomain: tenant.subdomain,
-        plan: tenant.plan,
-        status: tenant.status,
-        settings: tenant.settings,
-        branding: tenant.branding,
-        created_at: tenant.createdAt,
-        updated_at: tenant.updatedAt
-      });
-    
-    if (error) {
-      console.error('Error migrating tenant:', tenant.id, error);
-    } else {
-      console.log('✓ Migrated tenant:', tenant.name);
-    }
-  }
-}
+        subdomain: tenant.subdomain || tenant.domain.split('.')[0],
+        plan: tenant.plan || 'trial',
+        status: tenant.status || 'active',
+        settings: tenant.settings || {},
+        branding: tenant.branding || {},
+        created_at: tenant.createdAt || new Date().toISOString(),
+        updated_at: tenant.updatedAt || new Date().toISOString()
+      }));
 
-async function migrateUsers(supabase: any, users: any[]) {
-  console.log('Migrating users...');
-  
-  for (const user of users) {
-    // Hash password if it's not already hashed
-    let hashedPassword = user.password;
-    if (!user.password.startsWith('$2a$') && !user.password.startsWith('$2b$')) {
-      hashedPassword = await bcrypt.hash(user.password, 12);
+      const { error: tenantsError } = await supabase
+        .from('tenants')
+        .upsert(tenants);
+
+      if (tenantsError) {
+        console.error('❌ Error migrating tenants:', tenantsError);
+      } else {
+        console.log(`✅ Migrated ${tenants.length} tenants`);
+      }
     }
-    
-    const { error } = await supabase
-      .from('users')
-      .upsert({
+
+    // 2. Migrate Users
+    console.log('👥 Migrating users...');
+    if (jsonDatabase.users && jsonDatabase.users.length > 0) {
+      const users = await Promise.all(jsonDatabase.users.map(async (user: any) => ({
         id: user.id,
         tenant_id: user.tenantId,
         email: user.email,
-        password: hashedPassword,
+        password: user.password || await bcrypt.hash('admin123', 10), // Default password
         first_name: user.firstName,
         last_name: user.lastName,
-        role: user.role,
-        status: user.status,
-        permissions: user.permissions,
+        role: user.role || 'viewer',
+        status: user.status || 'active',
+        permissions: user.permissions || [],
         last_login: user.lastLogin,
-        login_attempts: user.loginAttempts,
+        login_attempts: user.loginAttempts || 0,
         locked_until: user.lockedUntil,
-        email_verified: user.emailVerified,
+        email_verified: user.emailVerified || true,
         email_verification_token: user.emailVerificationToken,
         password_reset_token: user.passwordResetToken,
         password_reset_expires: user.passwordResetExpires,
-        two_factor_enabled: user.twoFactorEnabled,
+        two_factor_enabled: user.twoFactorEnabled || false,
         two_factor_secret: user.twoFactorSecret,
-        preferences: user.preferences,
-        created_at: user.createdAt,
-        updated_at: user.updatedAt
-      });
-    
-    if (error) {
-      console.error('Error migrating user:', user.email, error);
-    } else {
-      console.log('✓ Migrated user:', user.email);
-    }
-  }
-}
+        preferences: user.preferences || {},
+        created_at: user.createdAt || new Date().toISOString(),
+        updated_at: user.updatedAt || new Date().toISOString()
+      })));
 
-async function migrateDevices(supabase: any, devices: any[]) {
-  console.log('Migrating devices...');
-  
-  for (const device of devices) {
-    const { error } = await supabase
-      .from('devices')
-      .upsert({
+      const { error: usersError } = await supabase
+        .from('users')
+        .upsert(users);
+
+      if (usersError) {
+        console.error('❌ Error migrating users:', usersError);
+      } else {
+        console.log(`✅ Migrated ${users.length} users`);
+      }
+    }
+
+    // 3. Migrate Devices
+    console.log('📱 Migrating devices...');
+    if (jsonDatabase.devices && jsonDatabase.devices.length > 0) {
+      const devices = jsonDatabase.devices.map((device: any) => ({
         id: device.id,
         tenant_id: device.tenantId,
         name: device.name,
-        status: device.status,
-        last_seen: device.lastSeen,
+        status: device.status || 'offline',
+        last_seen: device.lastSeen || new Date().toISOString(),
         current_playlist_id: device.currentPlaylistId,
         group_name: device.groupName,
         location: device.location,
-        created_at: device.createdAt,
-        updated_at: device.updatedAt
-      });
-    
-    if (error) {
-      console.error('Error migrating device:', device.name, error);
-    } else {
-      console.log('✓ Migrated device:', device.name);
-    }
-  }
-}
+        resolution: device.resolution,
+        orientation: device.orientation,
+        created_at: device.createdAt || new Date().toISOString(),
+        updated_at: device.updatedAt || new Date().toISOString()
+      }));
 
-async function migrateMediaItems(supabase: any, mediaItems: any[]) {
-  console.log('Migrating media items...');
-  
-  for (const media of mediaItems) {
-    const { error } = await supabase
-      .from('media_items')
-      .upsert({
+      const { error: devicesError } = await supabase
+        .from('devices')
+        .upsert(devices);
+
+      if (devicesError) {
+        console.error('❌ Error migrating devices:', devicesError);
+      } else {
+        console.log(`✅ Migrated ${devices.length} devices`);
+      }
+    }
+
+    // 4. Migrate Media Items
+    console.log('🎬 Migrating media items...');
+    if (jsonDatabase.mediaItems && jsonDatabase.mediaItems.length > 0) {
+      const mediaItems = jsonDatabase.mediaItems.map((media: any) => ({
         id: media.id,
         tenant_id: media.tenantId,
         name: media.name,
         type: media.type,
         url: media.url,
-        size: media.size,
+        thumbnail_url: media.thumbnailUrl,
         duration: media.duration,
-        thumbnail: media.thumbnail,
-        category: media.category,
-        tags: media.tags || [],
-        created_at: media.createdAt,
-        updated_at: media.updatedAt
-      });
-    
-    if (error) {
-      console.error('Error migrating media item:', media.name, error);
-    } else {
-      console.log('✓ Migrated media item:', media.name);
-    }
-  }
-}
+        size: media.size,
+        metadata: media.metadata || {},
+        created_at: media.createdAt || new Date().toISOString(),
+        updated_at: media.updatedAt || new Date().toISOString()
+      }));
 
-async function migrateLayouts(supabase: any, layouts: any[]) {
-  console.log('Migrating layouts...');
-  
-  for (const layout of layouts) {
-    const { error } = await supabase
-      .from('layouts')
-      .upsert({
+      const { error: mediaError } = await supabase
+        .from('media_items')
+        .upsert(mediaItems);
+
+      if (mediaError) {
+        console.error('❌ Error migrating media items:', mediaError);
+      } else {
+        console.log(`✅ Migrated ${mediaItems.length} media items`);
+      }
+    }
+
+    // 5. Migrate Layouts
+    console.log('🎨 Migrating layouts...');
+    if (jsonDatabase.layouts && jsonDatabase.layouts.length > 0) {
+      const layouts = jsonDatabase.layouts.map((layout: any) => ({
         id: layout.id,
         tenant_id: layout.tenantId,
         name: layout.name,
         description: layout.description,
-        template: layout.template,
-        category: layout.category,
-        orientation: layout.orientation,
+        template: layout.template || 'custom',
+        category: layout.category || 'custom',
+        orientation: layout.orientation || 'landscape',
         thumbnail: layout.thumbnail,
-        dimensions: layout.dimensions,
+        dimensions: layout.dimensions || { width: 1920, height: 1080 },
         background_color: layout.backgroundColor,
-        created_at: layout.createdAt,
-        updated_at: layout.updatedAt
-      });
-    
-    if (error) {
-      console.error('Error migrating layout:', layout.name, error);
-    } else {
-      console.log('✓ Migrated layout:', layout.name);
-    }
-  }
-}
+        zones: layout.zones || [],
+        settings: layout.settings || {},
+        created_at: layout.createdAt || new Date().toISOString(),
+        updated_at: layout.updatedAt || new Date().toISOString()
+      }));
 
-async function migrateZones(supabase: any, zones: any[]) {
-  console.log('Migrating zones...');
-  
-  for (const zone of zones) {
-    const { error } = await supabase
-      .from('zones')
-      .upsert({
+      const { error: layoutsError } = await supabase
+        .from('layouts')
+        .upsert(layouts);
+
+      if (layoutsError) {
+        console.error('❌ Error migrating layouts:', layoutsError);
+      } else {
+        console.log(`✅ Migrated ${layouts.length} layouts`);
+      }
+    }
+
+    // 6. Migrate Zones (if separate)
+    console.log('🔲 Migrating zones...');
+    if (jsonDatabase.zones && jsonDatabase.zones.length > 0) {
+      const zones = jsonDatabase.zones.map((zone: any) => ({
         id: zone.id,
         layout_id: zone.layoutId,
         name: zone.name,
@@ -220,152 +201,171 @@ async function migrateZones(supabase: any, zones: any[]) {
         border_width: zone.borderWidth || 0,
         border_color: zone.borderColor,
         style: zone.style
-      });
-    
-    if (error) {
-      console.error('Error migrating zone:', zone.name, error);
-    } else {
-      console.log('✓ Migrated zone:', zone.name);
-    }
-  }
-}
+      }));
 
-async function migrateWidgetTemplates(supabase: any, templates: any[]) {
-  console.log('Migrating widget templates...');
-  
-  for (const template of templates) {
-    const { error } = await supabase
-      .from('widget_templates')
-      .upsert({
-        id: template.id,
-        name: template.name,
-        description: template.description,
-        icon: template.icon,
-        category: template.category,
-        thumbnail: template.thumbnail,
-        version: template.version,
-        author: template.author,
-        html_url: template.htmlUrl,
-        preview_url: template.previewUrl,
-        requirements: template.requirements || [],
-        is_premium: template.isPremium || false,
-        config_schema: template.configSchema,
-        default_config: template.defaultConfig
-      });
-    
-    if (error) {
-      console.error('Error migrating widget template:', template.name, error);
-    } else {
-      console.log('✓ Migrated widget template:', template.name);
-    }
-  }
-}
+      const { error: zonesError } = await supabase
+        .from('zones')
+        .upsert(zones);
 
-async function migrateWidgetInstances(supabase: any, instances: any[]) {
-  console.log('Migrating widget instances...');
-  
-  for (const instance of instances) {
-    const { error } = await supabase
-      .from('widget_instances')
-      .upsert({
+      if (zonesError) {
+        console.error('❌ Error migrating zones:', zonesError);
+      } else {
+        console.log(`✅ Migrated ${zones.length} zones`);
+      }
+    }
+
+    // 7. Migrate Playlists
+    console.log('📋 Migrating playlists...');
+    if (jsonDatabase.playlists && jsonDatabase.playlists.length > 0) {
+      const playlists = jsonDatabase.playlists.map((playlist: any) => ({
+        id: playlist.id,
+        tenant_id: playlist.tenantId,
+        name: playlist.name,
+        description: playlist.description,
+        loop: playlist.loop || false,
+        shuffle: playlist.shuffle || false,
+        priority: playlist.priority || 0,
+        duration: playlist.duration,
+        items: playlist.items || [],
+        settings: playlist.settings || {},
+        created_at: playlist.createdAt || new Date().toISOString(),
+        updated_at: playlist.updatedAt || new Date().toISOString()
+      }));
+
+      const { error: playlistsError } = await supabase
+        .from('playlists')
+        .upsert(playlists);
+
+      if (playlistsError) {
+        console.error('❌ Error migrating playlists:', playlistsError);
+      } else {
+        console.log(`✅ Migrated ${playlists.length} playlists`);
+      }
+    }
+
+    // 8. Migrate Playlist Items (if separate)
+    console.log('🎵 Migrating playlist items...');
+    if (jsonDatabase.playlistItems && jsonDatabase.playlistItems.length > 0) {
+      const playlistItems = jsonDatabase.playlistItems.map((item: any) => ({
+        id: item.id,
+        playlist_id: item.playlistId,
+        media_id: item.mediaId,
+        duration: item.duration,
+        transition: item.transition || 'fade',
+        transition_duration: item.transitionDuration || 1000,
+        volume: item.volume || 1.0,
+        repeat: item.repeat || 1,
+        order_index: item.orderIndex,
+        created_at: item.createdAt || new Date().toISOString()
+      }));
+
+      const { error: playlistItemsError } = await supabase
+        .from('playlist_items')
+        .upsert(playlistItems);
+
+      if (playlistItemsError) {
+        console.error('❌ Error migrating playlist items:', playlistItemsError);
+      } else {
+        console.log(`✅ Migrated ${playlistItems.length} playlist items`);
+      }
+    }
+
+    // 9. Migrate Schedules
+    console.log('📅 Migrating schedules...');
+    if (jsonDatabase.schedules && jsonDatabase.schedules.length > 0) {
+      const schedules = jsonDatabase.schedules.map((schedule: any) => ({
+        id: schedule.id,
+        tenant_id: schedule.tenantId,
+        name: schedule.name,
+        playlist_id: schedule.playlistId,
+        start_date: schedule.startDate,
+        end_date: schedule.endDate,
+        start_time: schedule.startTime,
+        end_time: schedule.endTime,
+        days_of_week: schedule.days || schedule.daysOfWeek || [],
+        priority: schedule.priority || 0,
+        is_active: schedule.active !== undefined ? schedule.active : (schedule.isActive || true),
+        created_at: schedule.createdAt || new Date().toISOString(),
+        updated_at: schedule.updatedAt || new Date().toISOString()
+      }));
+
+      const { error: schedulesError } = await supabase
+        .from('schedules')
+        .upsert(schedules);
+
+      if (schedulesError) {
+        console.error('❌ Error migrating schedules:', schedulesError);
+      } else {
+        console.log(`✅ Migrated ${schedules.length} schedules`);
+      }
+    }
+
+    // 10. Migrate Schedule Devices
+    console.log('📱 Migrating schedule devices...');
+    if (jsonDatabase.scheduleDevices && jsonDatabase.scheduleDevices.length > 0) {
+      const scheduleDevices = jsonDatabase.scheduleDevices.map((sd: any) => ({
+        schedule_id: sd.scheduleId,
+        device_id: sd.deviceId,
+        created_at: new Date().toISOString()
+      }));
+
+      const { error: scheduleDevicesError } = await supabase
+        .from('schedule_devices')
+        .upsert(scheduleDevices);
+
+      if (scheduleDevicesError) {
+        console.error('❌ Error migrating schedule devices:', scheduleDevicesError);
+      } else {
+        console.log(`✅ Migrated ${scheduleDevices.length} schedule devices`);
+      }
+    }
+
+    // 11. Migrate Widget Instances
+    console.log('🧩 Migrating widget instances...');
+    if (jsonDatabase.widgetInstances && jsonDatabase.widgetInstances.length > 0) {
+      const widgetInstances = jsonDatabase.widgetInstances.map((instance: any) => ({
         id: instance.id,
         tenant_id: instance.tenantId,
         template_id: instance.templateId,
         name: instance.name,
         config: instance.config,
-        created_at: instance.createdAt,
-        updated_at: instance.updatedAt
-      });
-    
-    if (error) {
-      console.error('Error migrating widget instance:', instance.name, error);
-    } else {
-      console.log('✓ Migrated widget instance:', instance.name);
-    }
-  }
-}
+        created_at: instance.createdAt || new Date().toISOString(),
+        updated_at: instance.updatedAt || new Date().toISOString()
+      }));
 
-async function migrateAuditLogs(supabase: any, logs: any[]) {
-  console.log('Migrating audit logs...');
-  
-  for (const log of logs) {
-    const { error } = await supabase
-      .from('audit_logs')
-      .upsert({
-        id: log.id,
-        tenant_id: log.tenantId,
-        user_id: log.userId,
-        action: log.action,
-        resource: log.resource,
-        details: log.details,
-        ip_address: log.ipAddress,
-        user_agent: log.userAgent,
-        timestamp: log.timestamp
-      });
-    
-    if (error) {
-      console.error('Error migrating audit log:', log.id, error);
-    } else {
-      console.log('✓ Migrated audit log:', log.action);
-    }
-  }
-}
+      const { error: widgetInstancesError } = await supabase
+        .from('widget_instances')
+        .upsert(widgetInstances);
 
-async function main() {
-  try {
-    console.log('🚀 Starting migration from JSON to Supabase...');
-    
-    // Check environment variables
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    
-    if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('Missing Supabase environment variables. Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
-    }
-    
-    // Create Supabase client
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false
+      if (widgetInstancesError) {
+        console.error('❌ Error migrating widget instances:', widgetInstancesError);
+      } else {
+        console.log(`✅ Migrated ${widgetInstances.length} widget instances`);
       }
-    });
-    
-    // Load JSON database
-    const jsonDb = await loadJsonDatabase();
-    
-    // Migrate in order (respecting foreign key constraints)
-    await migrateTenants(supabase, jsonDb.tenants || []);
-    await migrateUsers(supabase, jsonDb.users || []);
-    await migrateDevices(supabase, jsonDb.devices || []);
-    await migrateMediaItems(supabase, jsonDb.mediaItems || []);
-    await migrateLayouts(supabase, jsonDb.layouts || []);
-    await migrateZones(supabase, jsonDb.zones || []);
-    await migrateWidgetTemplates(supabase, jsonDb.widgetTemplates || []);
-    await migrateWidgetInstances(supabase, jsonDb.widgetInstances || []);
-    await migrateAuditLogs(supabase, jsonDb.auditLogs || []);
-    
-    console.log('✅ Migration completed successfully!');
-    console.log('📊 Migration Summary:');
-    console.log(`   - Tenants: ${jsonDb.tenants?.length || 0}`);
-    console.log(`   - Users: ${jsonDb.users?.length || 0}`);
-    console.log(`   - Devices: ${jsonDb.devices?.length || 0}`);
-    console.log(`   - Media Items: ${jsonDb.mediaItems?.length || 0}`);
-    console.log(`   - Layouts: ${jsonDb.layouts?.length || 0}`);
-    console.log(`   - Zones: ${jsonDb.zones?.length || 0}`);
-    console.log(`   - Widget Templates: ${jsonDb.widgetTemplates?.length || 0}`);
-    console.log(`   - Widget Instances: ${jsonDb.widgetInstances?.length || 0}`);
-    console.log(`   - Audit Logs: ${jsonDb.auditLogs?.length || 0}`);
-    
+    }
+
+    console.log('\n🎉 Migration completed successfully!');
+    console.log('\n📊 Migration Summary:');
+    console.log(`- Tenants: ${jsonDatabase.tenants?.length || 0}`);
+    console.log(`- Users: ${jsonDatabase.users?.length || 0}`);
+    console.log(`- Devices: ${jsonDatabase.devices?.length || 0}`);
+    console.log(`- Media Items: ${jsonDatabase.mediaItems?.length || 0}`);
+    console.log(`- Layouts: ${jsonDatabase.layouts?.length || 0}`);
+    console.log(`- Zones: ${jsonDatabase.zones?.length || 0}`);
+    console.log(`- Playlists: ${jsonDatabase.playlists?.length || 0}`);
+    console.log(`- Playlist Items: ${jsonDatabase.playlistItems?.length || 0}`);
+    console.log(`- Schedules: ${jsonDatabase.schedules?.length || 0}`);
+    console.log(`- Schedule Devices: ${jsonDatabase.scheduleDevices?.length || 0}`);
+    console.log(`- Widget Instances: ${jsonDatabase.widgetInstances?.length || 0}`);
+
+    console.log('\n✅ Your CreatiWall system is now powered by Supabase PostgreSQL!');
+    console.log('🔄 Restart your server to use the new database.');
+
   } catch (error) {
     console.error('❌ Migration failed:', error);
     process.exit(1);
   }
 }
 
-// Run migration if called directly
-if (import.meta.url === `file://${process.argv[1]}`) {
-  main();
-}
-
-export { main as migrateToSupabase };
+// Run migration
+migrateData();

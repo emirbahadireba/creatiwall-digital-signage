@@ -4,8 +4,8 @@ import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
-import db from '../db/database';
-import { authenticate, authorize, tenantIsolation } from '../middleware/auth';
+import { db } from '../db/unified-database.js';
+import { authenticate, authorize, tenantIsolation } from '../middleware/auth.js';
 
 // FFmpeg import - optional
 let ffmpeg: any = null;
@@ -51,10 +51,10 @@ router.use(authenticate);
 router.use(tenantIsolation);
 
 // Get all media items
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const tenantId = (req as any).user.tenantId;
-    const tenantMediaItems = db.database.mediaItems.filter((item: any) => item.tenantId === tenantId);
+    const tenantMediaItems = await db.getMediaByTenant(tenantId);
     res.json(tenantMediaItems);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -62,11 +62,11 @@ router.get('/', (req, res) => {
 });
 
 // Get media by ID
-router.get('/:id', (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
     const tenantId = (req as any).user.tenantId;
-    const item = db.database.mediaItems.find((m: any) => m.id === req.params.id && m.tenantId === tenantId);
-    if (!item) {
+    const item = await db.getMediaById(req.params.id);
+    if (!item || item.tenantId !== tenantId) {
       return res.status(404).json({ error: 'Media item not found' });
     }
     res.json(item);
@@ -185,23 +185,20 @@ router.post('/upload', upload.single('file'), async (req, res) => {
       }
     }
 
-    const item = {
-      id,
+    const item = await db.createMedia({
       tenantId: (req as any).user.tenantId,
       name: name || req.file.originalname,
-      type: detectedType as 'image' | 'video' | 'audio' | 'html' | 'web' | 'pdf' | 'rss',
+      type: detectedType,
       url,
       size,
       duration: null,
-      thumbnail: finalThumbnail,
-      category: category || null,
-      tags: parsedTags,
-      createdAt: now,
-      updatedAt: now
-    };
+      thumbnailUrl: finalThumbnail,
+      metadata: {
+        category: category || null,
+        tags: parsedTags
+      }
+    });
 
-    db.database.mediaItems.push(item);
-    db.saveDatabase();
     res.status(201).json(item);
   } catch (error: any) {
     console.error('Upload error:', error);
@@ -210,29 +207,24 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 });
 
 // Create media item (for URLs)
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const { name, type, url, size, duration, thumbnail, category, tags } = req.body;
-    const id = uuidv4();
-    const now = new Date().toISOString();
 
-    const item = {
-      id,
+    const item = await db.createMedia({
       tenantId: (req as any).user.tenantId,
       name,
       type,
       url,
       size: size || 0,
       duration: duration || null,
-      thumbnail: thumbnail || null,
-      category: category || null,
-      tags: tags || [],
-      createdAt: now,
-      updatedAt: now
-    };
+      thumbnailUrl: thumbnail || null,
+      metadata: {
+        category: category || null,
+        tags: tags || []
+      }
+    });
 
-    db.database.mediaItems.push(item);
-    db.saveDatabase();
     res.status(201).json(item);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -240,41 +232,47 @@ router.post('/', (req, res) => {
 });
 
 // Update media item
-router.put('/:id', (req, res) => {
+router.put('/:id', async (req, res) => {
   try {
     const { name, category, tags } = req.body;
     const tenantId = (req as any).user.tenantId;
-    const itemIndex = db.database.mediaItems.findIndex((m: any) => m.id === req.params.id && m.tenantId === tenantId);
     
-    if (itemIndex === -1) {
+    // Check if item exists and belongs to tenant
+    const existingItem = await db.getMediaById(req.params.id);
+    if (!existingItem || existingItem.tenantId !== tenantId) {
       return res.status(404).json({ error: 'Media item not found' });
     }
 
-    const now = new Date().toISOString();
-    db.database.mediaItems[itemIndex] = {
-      ...db.database.mediaItems[itemIndex],
+    const updatedItem = await db.updateMedia(req.params.id, {
       name,
-      category: category || null,
-      tags: tags || [],
-      updatedAt: now
-    };
-    db.saveDatabase();
-    res.json(db.database.mediaItems[itemIndex]);
+      metadata: {
+        ...existingItem.metadata,
+        category: category || null,
+        tags: tags || []
+      }
+    });
+
+    if (!updatedItem) {
+      return res.status(404).json({ error: 'Media item not found' });
+    }
+
+    res.json(updatedItem);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
 // Delete media item
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
     const tenantId = (req as any).user.tenantId;
-    const itemIndex = db.database.mediaItems.findIndex((m: any) => m.id === req.params.id && m.tenantId === tenantId);
-    if (itemIndex === -1) {
+    
+    // Check if item exists and belongs to tenant
+    const item = await db.getMediaById(req.params.id);
+    if (!item || item.tenantId !== tenantId) {
       return res.status(404).json({ error: 'Media item not found' });
     }
 
-    const item = db.database.mediaItems[itemIndex];
     // Delete file if it exists
     if (item.url && item.url.startsWith('/uploads/')) {
       const filePath = path.join(__dirname, '../../', item.url);
@@ -283,10 +281,12 @@ router.delete('/:id', (req, res) => {
       }
     }
 
-    db.database.mediaItems.splice(itemIndex, 1);
-    // Also remove from playlist items
-    db.database.playlistItems = db.database.playlistItems.filter((pi: any) => pi.mediaId !== req.params.id);
-    db.saveDatabase();
+    const deleted = await db.deleteMedia(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Media item not found' });
+    }
+
+    // TODO: Also remove from playlist items when playlist methods are implemented
     res.json({ message: 'Media item deleted successfully' });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -294,18 +294,17 @@ router.delete('/:id', (req, res) => {
 });
 
 // Fix video types endpoint
-router.post('/fix-video-types', (req, res) => {
+router.post('/fix-video-types', async (req, res) => {
   try {
+    const tenantId = (req as any).user.tenantId;
+    const mediaItems = await db.getMediaByTenant(tenantId);
     let fixedCount = 0;
-    db.database.mediaItems.forEach((item: any) => {
+    
+    for (const item of mediaItems) {
       if (item.url && item.url.endsWith('.mp4') && item.type !== 'video') {
-        item.type = 'video';
+        await db.updateMedia(item.id, { type: 'video' });
         fixedCount++;
       }
-    });
-    
-    if (fixedCount > 0) {
-      db.saveDatabase();
     }
     
     res.json({ message: `Fixed ${fixedCount} video types` });

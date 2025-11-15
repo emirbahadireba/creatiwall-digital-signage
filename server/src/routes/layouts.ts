@@ -1,6 +1,6 @@
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import db from '../db/database';
+import { db } from '../db/unified-database';
 import { authenticate, authorize, tenantIsolation } from '../middleware/auth';
 
 const router = express.Router();
@@ -29,19 +29,21 @@ const LAYOUT_CATEGORIES = [
 ];
 
 // Validate layout name uniqueness
-const validateLayoutName = (name: string, excludeId?: string) => {
-  const existingLayout = db.database.layouts.find((l: any) =>
+const validateLayoutName = async (name: string, tenantId: string, excludeId?: string) => {
+  const database = db;
+  const layouts = await database.getLayouts(tenantId);
+  const existingLayout = layouts.find((l: any) =>
     l.name.toLowerCase() === name.toLowerCase() && l.id !== excludeId
   );
   return !existingLayout;
 };
 
 // Generate unique layout name
-const generateUniqueLayoutName = (baseName: string) => {
+const generateUniqueLayoutName = async (baseName: string, tenantId: string) => {
   let name = baseName;
   let counter = 1;
   
-  while (!validateLayoutName(name)) {
+  while (!(await validateLayoutName(name, tenantId))) {
     name = `${baseName} ${counter}`;
     counter++;
   }
@@ -91,17 +93,19 @@ router.use(authenticate);
 router.use(tenantIsolation);
 
 // Get all layouts with filtering
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const { category, orientation, search } = req.query;
     const tenantId = (req as any).user.tenantId;
+    const database = db;
     
-    let layouts = db.database.layouts
-      .filter((layout: any) => layout.tenantId === tenantId)
-      .map((layout: any) => ({
-        ...layout,
-        zones: db.database.zones.filter((z: any) => z.layoutId === layout.id)
-      }));
+    let layouts = await database.getLayouts(tenantId);
+
+    // Add zones to each layout
+    for (const layout of layouts) {
+      const zones = await database.getZonesByLayoutId(layout.id);
+      (layout as any).zones = zones;
+    }
 
     // Filter by category
     if (category && category !== 'all') {
@@ -129,16 +133,20 @@ router.get('/', (req, res) => {
 });
 
 // Get layout by ID
-router.get('/:id', (req, res) => {
+router.get('/:id', async (req, res) => {
   try {
     const tenantId = (req as any).user.tenantId;
-    const layout = db.database.layouts.find((l: any) => l.id === req.params.id && l.tenantId === tenantId);
+    const database = db;
+    const layout = await database.getLayoutById(req.params.id, tenantId);
+    
     if (!layout) {
       return res.status(404).json({ error: 'Layout not found' });
     }
+    
+    const zones = await database.getZonesByLayoutId(layout.id);
     res.json({
       ...layout,
-      zones: db.database.zones.filter((z: any) => z.layoutId === layout.id)
+      zones
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -160,13 +168,16 @@ router.post('/', async (req, res) => {
       backgroundColor
     } = req.body;
 
+    const tenantId = (req as any).user.tenantId;
+    const database = db;
+
     // Validate required fields
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Layout name is required' });
     }
 
     // Generate unique name if needed
-    const uniqueName = generateUniqueLayoutName(name.trim());
+    const uniqueName = await generateUniqueLayoutName(name.trim(), tenantId);
     
     // Validate category
     if (category && !LAYOUT_CATEGORIES.includes(category)) {
@@ -202,7 +213,7 @@ router.post('/', async (req, res) => {
 
     const layout = {
       id,
-      tenantId: (req as any).user.tenantId,
+      tenantId,
       name: uniqueName,
       description: description || `${zones?.length || 0} bölgeli özel tasarım`,
       template: template || 'custom',
@@ -216,13 +227,14 @@ router.post('/', async (req, res) => {
       updatedAt: now
     };
 
-    // Add layout to database
-    db.database.layouts.push(layout);
+    // Create layout in database
+    const createdLayout = await database.createLayout(layout);
 
-    // Insert zones with UUID IDs
+    // Create zones if provided
+    const createdZones = [];
     if (zones && Array.isArray(zones)) {
-      zones.forEach((zone, index) => {
-        db.database.zones.push({
+      for (const [index, zone] of zones.entries()) {
+        const zoneData = {
           id: zone.id || uuidv4(),
           layoutId: id,
           name: zone.name || `Bölge ${index + 1}`,
@@ -245,15 +257,15 @@ router.post('/', async (req, res) => {
           borderWidth: zone.borderWidth !== undefined ? zone.borderWidth : 2,
           borderColor: zone.borderColor || null,
           style: zone.style || null
-        });
-      });
+        };
+        const createdZone = await database.createZone(zoneData);
+        createdZones.push(createdZone);
+      }
     }
 
-    // Save to database
-    db.saveDatabase();
     res.status(201).json({
-      ...layout,
-      zones: db.database.zones.filter((z: any) => z.layoutId === id)
+      ...createdLayout,
+      zones: createdZones
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -274,19 +286,18 @@ router.put('/:id', async (req, res) => {
       backgroundColor
     } = req.body;
     
-    // Get current database state
     const tenantId = (req as any).user.tenantId;
-    const updateLayoutIndex = db.database.layouts.findIndex((l: any) => l.id === req.params.id && l.tenantId === tenantId);
+    const database = db;
     
-    if (updateLayoutIndex === -1) {
+    // Get existing layout
+    const existingLayout = await database.getLayoutById(req.params.id, tenantId);
+    if (!existingLayout) {
       return res.status(404).json({ error: 'Layout not found' });
     }
 
-    const existingLayout = db.database.layouts[updateLayoutIndex];
-
     // Validate name uniqueness (excluding current layout)
     if (name && name.trim()) {
-      if (!validateLayoutName(name.trim(), req.params.id)) {
+      if (!(await validateLayoutName(name.trim(), tenantId, req.params.id))) {
         return res.status(400).json({ error: 'Layout name already exists' });
       }
     }
@@ -317,8 +328,8 @@ router.put('/:id', async (req, res) => {
     // Generate new thumbnail if zones changed
     const thumbnail = zones ? await generateLayoutThumbnail({ zones }) : existingLayout.thumbnail;
 
-    // Update layout
-    db.database.layouts[updateLayoutIndex] = {
+    // Update layout data
+    const updatedLayoutData = {
       ...existingLayout,
       name: name?.trim() || existingLayout.name,
       description: description !== undefined ? description : existingLayout.description,
@@ -330,14 +341,18 @@ router.put('/:id', async (req, res) => {
       updatedAt: now
     };
 
+    // Update layout in database
+    const updatedLayout = await database.updateLayout(req.params.id, updatedLayoutData, tenantId);
+
     // Update zones if provided
+    let updatedZones = [];
     if (zones && Array.isArray(zones)) {
       // Delete old zones
-      db.database.zones = db.database.zones.filter((z: any) => z.layoutId !== req.params.id);
+      await database.deleteZonesByLayoutId(req.params.id);
 
-      // Insert new zones with UUID IDs
-      zones.forEach((zone: any, index: number) => {
-        db.database.zones.push({
+      // Create new zones
+      for (const [index, zone] of zones.entries()) {
+        const zoneData = {
           id: zone.id || uuidv4(),
           layoutId: req.params.id,
           name: zone.name || `Bölge ${index + 1}`,
@@ -360,16 +375,18 @@ router.put('/:id', async (req, res) => {
           borderWidth: zone.borderWidth !== undefined ? zone.borderWidth : 2,
           borderColor: zone.borderColor || null,
           style: zone.style || null
-        });
-      });
+        };
+        const createdZone = await database.createZone(zoneData);
+        updatedZones.push(createdZone);
+      }
+    } else {
+      // Get existing zones if zones not provided
+      updatedZones = await database.getZonesByLayoutId(req.params.id);
     }
 
-    // Save to database
-    db.saveDatabase();
-
     res.json({
-      ...db.database.layouts[updateLayoutIndex],
-      zones: db.database.zones.filter((z: any) => z.layoutId === req.params.id)
+      ...updatedLayout,
+      zones: updatedZones
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -377,22 +394,20 @@ router.put('/:id', async (req, res) => {
 });
 
 // Delete layout
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
-    // Get current database state
     const tenantId = (req as any).user.tenantId;
-    const deleteLayoutIndex = db.database.layouts.findIndex((l: any) => l.id === req.params.id && l.tenantId === tenantId);
+    const database = db;
     
-    if (deleteLayoutIndex === -1) {
+    // Check if layout exists
+    const existingLayout = await database.getLayoutById(req.params.id, tenantId);
+    if (!existingLayout) {
       return res.status(404).json({ error: 'Layout not found' });
     }
     
-    // Remove layout and its zones
-    db.database.layouts.splice(deleteLayoutIndex, 1);
-    db.database.zones = db.database.zones.filter((z: any) => z.layoutId !== req.params.id);
-    
-    // Save to database
-    db.saveDatabase();
+    // Delete layout and its zones
+    await database.deleteZonesByLayoutId(req.params.id);
+    await database.deleteLayout(req.params.id, tenantId);
     
     res.json({ message: 'Layout deleted successfully' });
   } catch (error: any) {

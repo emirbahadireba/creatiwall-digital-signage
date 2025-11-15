@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import db from '../db/database';
-import { authenticate, authorize, tenantIsolation } from '../middleware/auth';
+import { db } from '../db/unified-database.js';
+import { authenticate, authorize, tenantIsolation } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -9,9 +9,9 @@ router.use(authenticate);
 router.use(tenantIsolation);
 
 // Get all widget templates (marketplace) - Global but requires authentication
-router.get('/templates', authenticate, (req, res) => {
+router.get('/templates', authenticate, async (req, res) => {
   try {
-    const templates = db.database.widgetTemplates;
+    const templates = await db.getWidgetTemplates();
     res.json(templates);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -19,9 +19,9 @@ router.get('/templates', authenticate, (req, res) => {
 });
 
 // Get single widget template - Global but requires authentication
-router.get('/templates/:id', authenticate, (req, res) => {
+router.get('/templates/:id', authenticate, async (req, res) => {
   try {
-    const template = db.database.widgetTemplates.find((t: any) => t.id === req.params.id);
+    const template = await db.getWidgetTemplateById(req.params.id);
     if (!template) {
       return res.status(404).json({ error: 'Widget template not found' });
     }
@@ -32,34 +32,39 @@ router.get('/templates/:id', authenticate, (req, res) => {
 });
 
 // Get all widget instances (user's installed widgets)
-router.get('/instances', (req, res) => {
+router.get('/instances', async (req, res) => {
   try {
     const tenantId = (req as any).user.tenantId;
-    const instances = db.database.widgetInstances
-      .filter((instance: any) => instance.tenantId === tenantId)
-      .map((instance: any) => {
-        const template = db.database.widgetTemplates.find((t: any) => t.id === instance.templateId);
+    const instances = await db.getWidgetInstancesByTenant(tenantId);
+    
+    // Enrich instances with template data
+    const enrichedInstances = await Promise.all(
+      instances.map(async (instance) => {
+        const template = await db.getWidgetTemplateById(instance.templateId);
         return {
           ...instance,
           template
         };
-      });
-    res.json(instances);
+      })
+    );
+    
+    res.json(enrichedInstances);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
 // Get single widget instance
-router.get('/instances/:id', (req, res) => {
+router.get('/instances/:id', async (req, res) => {
   try {
     const tenantId = (req as any).user.tenantId;
-    const instance = db.database.widgetInstances.find((i: any) => i.id === req.params.id && i.tenantId === tenantId);
-    if (!instance) {
+    const instance = await db.getWidgetInstanceById(req.params.id);
+    
+    if (!instance || instance.tenantId !== tenantId) {
       return res.status(404).json({ error: 'Widget instance not found' });
     }
     
-    const template = db.database.widgetTemplates.find((t: any) => t.id === instance.templateId);
+    const template = await db.getWidgetTemplateById(instance.templateId);
     res.json({ ...instance, template });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -67,27 +72,21 @@ router.get('/instances/:id', (req, res) => {
 });
 
 // Create widget instance (install widget)
-router.post('/instances', (req, res) => {
+router.post('/instances', async (req, res) => {
   try {
     const { templateId, name, config } = req.body;
     
-    const template = db.database.widgetTemplates.find((t: any) => t.id === templateId);
+    const template = await db.getWidgetTemplateById(templateId);
     if (!template) {
       return res.status(404).json({ error: 'Widget template not found' });
     }
     
-    const newInstance = {
-      id: Date.now().toString() + '-' + Math.random().toString(36).substr(2, 9),
+    const newInstance = await db.createWidgetInstance({
       tenantId: (req as any).user.tenantId,
       templateId,
       name: name || template.name,
-      config: config || template.defaultConfig,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-    
-    db.database.widgetInstances.push(newInstance);
-    db.saveDatabase();
+      config: config || template.defaultConfig
+    });
     
     res.status(201).json({ ...newInstance, template });
   } catch (error: any) {
@@ -96,44 +95,48 @@ router.post('/instances', (req, res) => {
 });
 
 // Update widget instance
-router.put('/instances/:id', (req, res) => {
+router.put('/instances/:id', async (req, res) => {
   try {
     const { name, config } = req.body;
     const tenantId = (req as any).user.tenantId;
-    const index = db.database.widgetInstances.findIndex((i: any) => i.id === req.params.id && i.tenantId === tenantId);
     
-    if (index === -1) {
+    // Check if instance exists and belongs to tenant
+    const existingInstance = await db.getWidgetInstanceById(req.params.id);
+    if (!existingInstance || existingInstance.tenantId !== tenantId) {
       return res.status(404).json({ error: 'Widget instance not found' });
     }
     
-    db.database.widgetInstances[index] = {
-      ...db.database.widgetInstances[index],
-      name: name || db.database.widgetInstances[index].name,
-      config: config || db.database.widgetInstances[index].config,
-      updatedAt: new Date().toISOString()
-    };
+    const updatedInstance = await db.updateWidgetInstance(req.params.id, {
+      name: name || existingInstance.name,
+      config: config || existingInstance.config
+    });
     
-    db.saveDatabase();
+    if (!updatedInstance) {
+      return res.status(404).json({ error: 'Widget instance not found' });
+    }
     
-    const template = db.database.widgetTemplates.find((t: any) => t.id === db.database.widgetInstances[index].templateId);
-    res.json({ ...db.database.widgetInstances[index], template });
+    const template = await db.getWidgetTemplateById(updatedInstance.templateId);
+    res.json({ ...updatedInstance, template });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
 // Delete widget instance
-router.delete('/instances/:id', (req, res) => {
+router.delete('/instances/:id', async (req, res) => {
   try {
     const tenantId = (req as any).user.tenantId;
-    const index = db.database.widgetInstances.findIndex((i: any) => i.id === req.params.id && i.tenantId === tenantId);
     
-    if (index === -1) {
+    // Check if instance exists and belongs to tenant
+    const existingInstance = await db.getWidgetInstanceById(req.params.id);
+    if (!existingInstance || existingInstance.tenantId !== tenantId) {
       return res.status(404).json({ error: 'Widget instance not found' });
     }
     
-    db.database.widgetInstances.splice(index, 1);
-    db.saveDatabase();
+    const deleted = await db.deleteWidgetInstance(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Widget instance not found' });
+    }
     
     res.status(204).send();
   } catch (error: any) {

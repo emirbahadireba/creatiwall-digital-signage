@@ -1,14 +1,24 @@
--- CreatiWall Digital Signage System - Supabase Schema
--- Run this in your Supabase SQL Editor
+-- CreatiWall Digital Signage System - Incremental Supabase Schema
+-- Bu script mevcut tabloları kontrol eder ve sadece eksik olanları oluşturur
+-- Hata vermeden güvenli bir şekilde çalıştırılabilir
 
--- Enable UUID extension
+-- Enable UUID extension if not exists
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Enable Row Level Security
-ALTER DATABASE postgres SET "app.jwt_secret" TO 'your-jwt-secret-here';
+-- Enable Row Level Security globally if not set
+DO $$
+BEGIN
+    -- Try to set JWT secret, ignore if already set
+    BEGIN
+        ALTER DATABASE postgres SET "app.jwt_secret" TO '431cc51f80b54beb2905d81bfef8cab17fee760f5a2f36af07edb1189dae9205';
+    EXCEPTION WHEN OTHERS THEN
+        -- Ignore error if already set
+        NULL;
+    END;
+END $$;
 
--- Create tenants table
-CREATE TABLE tenants (
+-- Create tenants table if not exists
+CREATE TABLE IF NOT EXISTS tenants (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name TEXT NOT NULL,
     domain TEXT UNIQUE NOT NULL,
@@ -21,8 +31,8 @@ CREATE TABLE tenants (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Create users table
-CREATE TABLE users (
+-- Create users table if not exists
+CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
     email TEXT UNIQUE NOT NULL,
@@ -46,8 +56,8 @@ CREATE TABLE users (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Create devices table
-CREATE TABLE devices (
+-- Create devices table if not exists
+CREATE TABLE IF NOT EXISTS devices (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
@@ -56,29 +66,28 @@ CREATE TABLE devices (
     current_playlist_id UUID,
     group_name TEXT,
     location TEXT,
-    resolution TEXT,
-    orientation TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Create media_items table
-CREATE TABLE media_items (
+-- Create media_items table if not exists
+CREATE TABLE IF NOT EXISTS media_items (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     type TEXT NOT NULL,
     url TEXT NOT NULL,
-    thumbnail_url TEXT,
+    size BIGINT NOT NULL,
     duration INTEGER,
-    size BIGINT,
-    metadata JSONB DEFAULT '{}',
+    thumbnail TEXT,
+    category TEXT,
+    tags TEXT[] DEFAULT '{}',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Create layouts table
-CREATE TABLE layouts (
+-- Create layouts table if not exists
+CREATE TABLE IF NOT EXISTS layouts (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
@@ -89,14 +98,12 @@ CREATE TABLE layouts (
     thumbnail TEXT,
     dimensions JSONB NOT NULL,
     background_color TEXT,
-    zones JSONB DEFAULT '[]',
-    settings JSONB DEFAULT '{}',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Create zones table
-CREATE TABLE zones (
+-- Create zones table if not exists
+CREATE TABLE IF NOT EXISTS zones (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     layout_id UUID REFERENCES layouts(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
@@ -121,55 +128,47 @@ CREATE TABLE zones (
     style JSONB
 );
 
--- Create playlists table
-CREATE TABLE playlists (
+-- Create playlists table if not exists
+CREATE TABLE IF NOT EXISTS playlists (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     description TEXT,
-    loop BOOLEAN DEFAULT false,
-    shuffle BOOLEAN DEFAULT false,
-    priority INTEGER DEFAULT 0,
     duration INTEGER,
-    items JSONB DEFAULT '[]',
-    settings JSONB DEFAULT '{}',
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Create playlist_items table
-CREATE TABLE playlist_items (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    playlist_id UUID REFERENCES playlists(id) ON DELETE CASCADE,
-    media_id UUID REFERENCES media_items(id) ON DELETE CASCADE,
-    duration INTEGER,
-    transition TEXT DEFAULT 'fade',
-    transition_duration INTEGER DEFAULT 1000,
-    volume DECIMAL DEFAULT 1.0,
-    repeat INTEGER DEFAULT 1,
-    order_index INTEGER NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Create schedules table
-CREATE TABLE schedules (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
-    name TEXT NOT NULL,
-    playlist_id UUID REFERENCES playlists(id) ON DELETE CASCADE,
-    start_date TEXT NOT NULL,
-    end_date TEXT,
-    start_time TEXT,
-    end_time TEXT,
-    days_of_week TEXT[] DEFAULT '{}',
-    priority INTEGER DEFAULT 0,
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Create schedule_devices table
-CREATE TABLE schedule_devices (
+-- Create playlist_items table if not exists
+CREATE TABLE IF NOT EXISTS playlist_items (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    playlist_id UUID REFERENCES playlists(id) ON DELETE CASCADE,
+    media_id UUID REFERENCES media_items(id) ON DELETE CASCADE,
+    order_index INTEGER NOT NULL,
+    duration INTEGER,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Create schedules table if not exists
+CREATE TABLE IF NOT EXISTS schedules (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    layout_id UUID REFERENCES layouts(id) ON DELETE CASCADE,
+    start_date DATE NOT NULL,
+    end_date DATE,
+    start_time TIME NOT NULL,
+    end_time TIME NOT NULL,
+    days_of_week TEXT[] NOT NULL,
+    is_active BOOLEAN DEFAULT true,
+    priority INTEGER DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Create schedule_devices table if not exists
+CREATE TABLE IF NOT EXISTS schedule_devices (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     schedule_id UUID REFERENCES schedules(id) ON DELETE CASCADE,
     device_id UUID REFERENCES devices(id) ON DELETE CASCADE,
@@ -177,8 +176,8 @@ CREATE TABLE schedule_devices (
     UNIQUE(schedule_id, device_id)
 );
 
--- Create widget_templates table
-CREATE TABLE widget_templates (
+-- Create widget_templates table if not exists
+CREATE TABLE IF NOT EXISTS widget_templates (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT NOT NULL,
@@ -195,8 +194,8 @@ CREATE TABLE widget_templates (
     default_config JSONB NOT NULL
 );
 
--- Create widget_instances table
-CREATE TABLE widget_instances (
+-- Create widget_instances table if not exists
+CREATE TABLE IF NOT EXISTS widget_instances (
     id TEXT PRIMARY KEY,
     tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
     template_id TEXT REFERENCES widget_templates(id) ON DELETE CASCADE,
@@ -206,8 +205,8 @@ CREATE TABLE widget_instances (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Create user_sessions table
-CREATE TABLE user_sessions (
+-- Create user_sessions table if not exists
+CREATE TABLE IF NOT EXISTS user_sessions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
@@ -220,8 +219,8 @@ CREATE TABLE user_sessions (
     last_activity TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Create audit_logs table
-CREATE TABLE audit_logs (
+-- Create audit_logs table if not exists
+CREATE TABLE IF NOT EXISTS audit_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
     user_id UUID REFERENCES users(id) ON DELETE SET NULL,
@@ -233,21 +232,69 @@ CREATE TABLE audit_logs (
     timestamp TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Create indexes for performance
-CREATE INDEX idx_users_tenant_id ON users(tenant_id);
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_devices_tenant_id ON devices(tenant_id);
-CREATE INDEX idx_media_items_tenant_id ON media_items(tenant_id);
-CREATE INDEX idx_layouts_tenant_id ON layouts(tenant_id);
-CREATE INDEX idx_zones_layout_id ON zones(layout_id);
-CREATE INDEX idx_playlists_tenant_id ON playlists(tenant_id);
-CREATE INDEX idx_schedules_tenant_id ON schedules(tenant_id);
-CREATE INDEX idx_widget_instances_tenant_id ON widget_instances(tenant_id);
-CREATE INDEX idx_user_sessions_user_id ON user_sessions(user_id);
-CREATE INDEX idx_user_sessions_token ON user_sessions(token);
-CREATE INDEX idx_audit_logs_tenant_id ON audit_logs(tenant_id);
+-- Create indexes if they don't exist (PostgreSQL ignores CREATE INDEX IF NOT EXISTS)
+DO $$
+BEGIN
+    -- Users indexes
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_users_tenant_id') THEN
+        CREATE INDEX idx_users_tenant_id ON users(tenant_id);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_users_email') THEN
+        CREATE INDEX idx_users_email ON users(email);
+    END IF;
+    
+    -- Devices indexes
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_devices_tenant_id') THEN
+        CREATE INDEX idx_devices_tenant_id ON devices(tenant_id);
+    END IF;
+    
+    -- Media items indexes
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_media_items_tenant_id') THEN
+        CREATE INDEX idx_media_items_tenant_id ON media_items(tenant_id);
+    END IF;
+    
+    -- Layouts indexes
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_layouts_tenant_id') THEN
+        CREATE INDEX idx_layouts_tenant_id ON layouts(tenant_id);
+    END IF;
+    
+    -- Zones indexes
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_zones_layout_id') THEN
+        CREATE INDEX idx_zones_layout_id ON zones(layout_id);
+    END IF;
+    
+    -- Playlists indexes
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_playlists_tenant_id') THEN
+        CREATE INDEX idx_playlists_tenant_id ON playlists(tenant_id);
+    END IF;
+    
+    -- Schedules indexes
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_schedules_tenant_id') THEN
+        CREATE INDEX idx_schedules_tenant_id ON schedules(tenant_id);
+    END IF;
+    
+    -- Widget instances indexes
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_widget_instances_tenant_id') THEN
+        CREATE INDEX idx_widget_instances_tenant_id ON widget_instances(tenant_id);
+    END IF;
+    
+    -- User sessions indexes
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_user_sessions_user_id') THEN
+        CREATE INDEX idx_user_sessions_user_id ON user_sessions(user_id);
+    END IF;
+    
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_user_sessions_token') THEN
+        CREATE INDEX idx_user_sessions_token ON user_sessions(token);
+    END IF;
+    
+    -- Audit logs indexes
+    IF NOT EXISTS (SELECT 1 FROM pg_indexes WHERE indexname = 'idx_audit_logs_tenant_id') THEN
+        CREATE INDEX idx_audit_logs_tenant_id ON audit_logs(tenant_id);
+    END IF;
+END $$;
 
--- Enable Row Level Security (RLS)
+-- Enable Row Level Security on all tables
 ALTER TABLE tenants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE devices ENABLE ROW LEVEL SECURITY;
@@ -262,81 +309,94 @@ ALTER TABLE widget_instances ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 
--- RLS Policies for multi-tenant isolation
--- Users can only access their own tenant's data
-
+-- Create RLS Policies (DROP IF EXISTS to avoid conflicts)
 -- Tenants policies
+DROP POLICY IF EXISTS "Users can view their own tenant" ON tenants;
 CREATE POLICY "Users can view their own tenant" ON tenants
-    FOR SELECT USING (id = (current_setting('app.current_tenant_id'))::uuid);
+    FOR SELECT USING (id = (current_setting('app.current_tenant_id', true))::uuid);
 
 -- Users policies
+DROP POLICY IF EXISTS "Users can view users in their tenant" ON users;
 CREATE POLICY "Users can view users in their tenant" ON users
-    FOR SELECT USING (tenant_id = (current_setting('app.current_tenant_id'))::uuid);
+    FOR SELECT USING (tenant_id = (current_setting('app.current_tenant_id', true))::uuid);
 
+DROP POLICY IF EXISTS "Users can update their own profile" ON users;
 CREATE POLICY "Users can update their own profile" ON users
-    FOR UPDATE USING (id = (current_setting('app.current_user_id'))::uuid);
+    FOR UPDATE USING (id = (current_setting('app.current_user_id', true))::uuid);
 
 -- Devices policies
+DROP POLICY IF EXISTS "Users can manage devices in their tenant" ON devices;
 CREATE POLICY "Users can manage devices in their tenant" ON devices
-    FOR ALL USING (tenant_id = (current_setting('app.current_tenant_id'))::uuid);
+    FOR ALL USING (tenant_id = (current_setting('app.current_tenant_id', true))::uuid);
 
 -- Media items policies
+DROP POLICY IF EXISTS "Users can manage media in their tenant" ON media_items;
 CREATE POLICY "Users can manage media in their tenant" ON media_items
-    FOR ALL USING (tenant_id = (current_setting('app.current_tenant_id'))::uuid);
+    FOR ALL USING (tenant_id = (current_setting('app.current_tenant_id', true))::uuid);
 
 -- Layouts policies
+DROP POLICY IF EXISTS "Users can manage layouts in their tenant" ON layouts;
 CREATE POLICY "Users can manage layouts in their tenant" ON layouts
-    FOR ALL USING (tenant_id = (current_setting('app.current_tenant_id'))::uuid);
+    FOR ALL USING (tenant_id = (current_setting('app.current_tenant_id', true))::uuid);
 
--- Zones policies (inherit from layouts)
+-- Zones policies
+DROP POLICY IF EXISTS "Users can manage zones in their tenant" ON zones;
 CREATE POLICY "Users can manage zones in their tenant" ON zones
     FOR ALL USING (
         layout_id IN (
-            SELECT id FROM layouts WHERE tenant_id = (current_setting('app.current_tenant_id'))::uuid
+            SELECT id FROM layouts WHERE tenant_id = (current_setting('app.current_tenant_id', true))::uuid
         )
     );
 
 -- Playlists policies
+DROP POLICY IF EXISTS "Users can manage playlists in their tenant" ON playlists;
 CREATE POLICY "Users can manage playlists in their tenant" ON playlists
-    FOR ALL USING (tenant_id = (current_setting('app.current_tenant_id'))::uuid);
+    FOR ALL USING (tenant_id = (current_setting('app.current_tenant_id', true))::uuid);
 
--- Playlist items policies (inherit from playlists)
+-- Playlist items policies
+DROP POLICY IF EXISTS "Users can manage playlist items in their tenant" ON playlist_items;
 CREATE POLICY "Users can manage playlist items in their tenant" ON playlist_items
     FOR ALL USING (
         playlist_id IN (
-            SELECT id FROM playlists WHERE tenant_id = (current_setting('app.current_tenant_id'))::uuid
+            SELECT id FROM playlists WHERE tenant_id = (current_setting('app.current_tenant_id', true))::uuid
         )
     );
 
 -- Schedules policies
+DROP POLICY IF EXISTS "Users can manage schedules in their tenant" ON schedules;
 CREATE POLICY "Users can manage schedules in their tenant" ON schedules
-    FOR ALL USING (tenant_id = (current_setting('app.current_tenant_id'))::uuid);
+    FOR ALL USING (tenant_id = (current_setting('app.current_tenant_id', true))::uuid);
 
--- Schedule devices policies (inherit from schedules)
+-- Schedule devices policies
+DROP POLICY IF EXISTS "Users can manage schedule devices in their tenant" ON schedule_devices;
 CREATE POLICY "Users can manage schedule devices in their tenant" ON schedule_devices
     FOR ALL USING (
         schedule_id IN (
-            SELECT id FROM schedules WHERE tenant_id = (current_setting('app.current_tenant_id'))::uuid
+            SELECT id FROM schedules WHERE tenant_id = (current_setting('app.current_tenant_id', true))::uuid
         )
     );
 
 -- Widget templates policies (public read)
+DROP POLICY IF EXISTS "Anyone can view widget templates" ON widget_templates;
 CREATE POLICY "Anyone can view widget templates" ON widget_templates
     FOR SELECT USING (true);
 
 -- Widget instances policies
+DROP POLICY IF EXISTS "Users can manage widget instances in their tenant" ON widget_instances;
 CREATE POLICY "Users can manage widget instances in their tenant" ON widget_instances
-    FOR ALL USING (tenant_id = (current_setting('app.current_tenant_id'))::uuid);
+    FOR ALL USING (tenant_id = (current_setting('app.current_tenant_id', true))::uuid);
 
 -- User sessions policies
+DROP POLICY IF EXISTS "Users can manage their own sessions" ON user_sessions;
 CREATE POLICY "Users can manage their own sessions" ON user_sessions
-    FOR ALL USING (user_id = (current_setting('app.current_user_id'))::uuid);
+    FOR ALL USING (user_id = (current_setting('app.current_user_id', true))::uuid);
 
 -- Audit logs policies
+DROP POLICY IF EXISTS "Users can view audit logs in their tenant" ON audit_logs;
 CREATE POLICY "Users can view audit logs in their tenant" ON audit_logs
-    FOR SELECT USING (tenant_id = (current_setting('app.current_tenant_id'))::uuid);
+    FOR SELECT USING (tenant_id = (current_setting('app.current_tenant_id', true))::uuid);
 
--- Create updated_at trigger function
+-- Create or replace updated_at trigger function
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -345,32 +405,59 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
--- Add updated_at triggers
-CREATE TRIGGER update_tenants_updated_at BEFORE UPDATE ON tenants
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+-- Create triggers if they don't exist
+DO $$
+BEGIN
+    -- Tenants trigger
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_tenants_updated_at') THEN
+        CREATE TRIGGER update_tenants_updated_at BEFORE UPDATE ON tenants
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+    
+    -- Users trigger
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_users_updated_at') THEN
+        CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+    
+    -- Devices trigger
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_devices_updated_at') THEN
+        CREATE TRIGGER update_devices_updated_at BEFORE UPDATE ON devices
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+    
+    -- Media items trigger
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_media_items_updated_at') THEN
+        CREATE TRIGGER update_media_items_updated_at BEFORE UPDATE ON media_items
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+    
+    -- Layouts trigger
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_layouts_updated_at') THEN
+        CREATE TRIGGER update_layouts_updated_at BEFORE UPDATE ON layouts
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+    
+    -- Playlists trigger
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_playlists_updated_at') THEN
+        CREATE TRIGGER update_playlists_updated_at BEFORE UPDATE ON playlists
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+    
+    -- Schedules trigger
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_schedules_updated_at') THEN
+        CREATE TRIGGER update_schedules_updated_at BEFORE UPDATE ON schedules
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+    
+    -- Widget instances trigger
+    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_widget_instances_updated_at') THEN
+        CREATE TRIGGER update_widget_instances_updated_at BEFORE UPDATE ON widget_instances
+            FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+    END IF;
+END $$;
 
-CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_devices_updated_at BEFORE UPDATE ON devices
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_media_items_updated_at BEFORE UPDATE ON media_items
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_layouts_updated_at BEFORE UPDATE ON layouts
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_playlists_updated_at BEFORE UPDATE ON playlists
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_schedules_updated_at BEFORE UPDATE ON schedules
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_widget_instances_updated_at BEFORE UPDATE ON widget_instances
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
--- Insert default widget templates
+-- Insert default widget templates (ON CONFLICT DO NOTHING to avoid duplicates)
 INSERT INTO widget_templates (id, name, description, icon, category, version, author, html_url, config_schema, default_config) VALUES
 ('widget-clock', 'Dijital Saat', 'Özelleştirilebilir dijital saat widget''ı. Tarih, saat ve saniye gösterimi.', '🕐', 'time', '1.0.0', 'CreatiWall', '/widgets/clock.html', 
 '[
@@ -403,17 +490,20 @@ INSERT INTO widget_templates (id, name, description, icon, category, version, au
   {"key": "backgroundColor", "label": "Arkaplan Rengi", "type": "color", "default": "transparent", "required": false, "description": "Widget arkaplan rengi"},
   {"key": "displayMode", "label": "Görüntüleme Modu", "type": "select", "default": "list", "options": [{"label": "Liste", "value": "list"}, {"label": "Yatay Ticker (Kayan Yazı)", "value": "ticker"}, {"label": "Card Slider (Kartlar Değişsin)", "value": "slider"}, {"label": "Dikey Scroll (Yukarı Kayan)", "value": "vertical-scroll"}, {"label": "Fade (Solarak Geçiş)", "value": "fade"}], "required": false, "description": "Haberlerin nasıl gösterileceği"}
 ]',
-'{"feedUrl": "https://www.trthaber.com/xml_mobile.rss", "maxItems": 10, "refreshInterval": 300, "textColor": "#ffffff", "backgroundColor": "transparent", "displayMode": "list"}');
+'{"feedUrl": "https://www.trthaber.com/xml_mobile.rss", "maxItems": 10, "refreshInterval": 300, "textColor": "#ffffff", "backgroundColor": "transparent", "displayMode": "list"}')
+ON CONFLICT (id) DO NOTHING;
 
--- Create demo tenant
+-- Insert demo tenant if not exists
 INSERT INTO tenants (id, name, domain, subdomain, plan, status, settings, branding) VALUES
 ('550e8400-e29b-41d4-a716-446655440000', 'Demo Şirketi', 'demo.creatiwall.com', 'demo', 'premium', 'active', 
 '{"maxUsers": 50, "maxDevices": 100, "maxStorage": "10GB", "features": ["advanced_widgets", "custom_branding", "api_access"]}',
-'{"logo": null, "primaryColor": "#ffc000", "secondaryColor": "#333333"}');
+'{"logo": null, "primaryColor": "#ffc000", "secondaryColor": "#333333"}')
+ON CONFLICT (id) DO NOTHING;
 
--- Create demo admin user (password: admin123)
+-- Insert demo admin user if not exists (password: admin123)
 INSERT INTO users (id, tenant_id, email, password, first_name, last_name, role, status, permissions, email_verified) VALUES
-('550e8400-e29b-41d4-a716-446655440001', '550e8400-e29b-41d4-a716-446655440000', 'admin@demo.com', '$2a$10$example.hash.will.be.generated', 'Admin', 'User', 'tenant_admin', 'active', ARRAY['*'], true);
+('550e8400-e29b-41d4-a716-446655440001', '550e8400-e29b-41d4-a716-446655440000', 'admin@demo.com', '$2a$10$example.hash.will.be.generated', 'Admin', 'User', 'tenant_admin', 'active', ARRAY['*'], true)
+ON CONFLICT (id) DO NOTHING;
 
 -- Success message
-SELECT 'CreatiWall Supabase schema created successfully!' as message;
+SELECT 'CreatiWall Supabase incremental schema applied successfully! ✅' as message;

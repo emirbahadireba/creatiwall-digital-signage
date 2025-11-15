@@ -1,6 +1,6 @@
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import db from '../db/database';
+import { db } from '../db/unified-database';
 import { authenticate, authorize, tenantIsolation } from '../middleware/auth';
 
 const router = express.Router();
@@ -10,55 +10,19 @@ router.use(authenticate);
 router.use(tenantIsolation);
 
 // Get all playlists
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const tenantId = (req as any).user.tenantId;
-    const playlists = db.database.playlists
-      .filter((playlist: any) => playlist.tenantId === tenantId)
-      .map((playlist: any) => ({
-        ...playlist,
-        loop: Boolean(playlist.loop),
-        shuffle: Boolean(playlist.shuffle),
-        items: db.database.playlistItems
-          .filter((pi: any) => pi.playlistId === playlist.id)
-          .sort((a: any, b: any) => a.orderIndex - b.orderIndex)
-          .map((item: any) => {
-            const media = db.database.mediaItems.find((m: any) => m.id === item.mediaId);
-            return {
-              id: item.id,
-              mediaId: item.mediaId,
-              duration: item.duration,
-              transition: item.transition,
-              transitionDuration: item.transitionDuration,
-              volume: Boolean(item.volume),
-              repeat: item.repeat,
-              order: item.orderIndex,
-              mediaName: media?.name,
-              mediaType: media?.type,
-              mediaUrl: media?.url
-            };
-          })
-      }));
-    res.json(playlists);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Get playlist by ID
-router.get('/:id', (req, res) => {
-  try {
-    const tenantId = (req as any).user.tenantId;
-    const playlist = db.database.playlists.find((p: any) => p.id === req.params.id && p.tenantId === tenantId);
-    if (!playlist) {
-      return res.status(404).json({ error: 'Playlist not found' });
-    }
-    const items = db.database.playlistItems
-      .filter((pi: any) => pi.playlistId === playlist.id)
-      .sort((a: any, b: any) => a.orderIndex - b.orderIndex)
-      .map((item: any) => {
-        const media = db.database.mediaItems.find((m: any) => m.id === item.mediaId);
-        return {
+    const playlists = await db.getPlaylists(tenantId);
+    
+    // Add items to each playlist
+    for (const playlist of playlists) {
+      const items = await db.getPlaylistItemsByPlaylistId(playlist.id);
+      const enrichedItems = [];
+      
+      for (const item of items) {
+        const media = await db.getMediaById(item.mediaId);
+        enrichedItems.push({
           id: item.id,
           mediaId: item.mediaId,
           duration: item.duration,
@@ -70,13 +34,55 @@ router.get('/:id', (req, res) => {
           mediaName: media?.name,
           mediaType: media?.type,
           mediaUrl: media?.url
-        };
+        });
+      }
+      
+      (playlist as any).items = enrichedItems;
+      (playlist as any).loop = Boolean(playlist.loop);
+      (playlist as any).shuffle = Boolean(playlist.shuffle);
+    }
+    
+    res.json(playlists);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get playlist by ID
+router.get('/:id', async (req, res) => {
+  try {
+    const tenantId = (req as any).user.tenantId;
+    const playlist = await db.getPlaylistById(req.params.id, tenantId);
+    
+    if (!playlist) {
+      return res.status(404).json({ error: 'Playlist not found' });
+    }
+    
+    const items = await db.getPlaylistItemsByPlaylistId(playlist.id);
+    const enrichedItems = [];
+    
+    for (const item of items) {
+      const media = await db.getMediaById(item.mediaId);
+      enrichedItems.push({
+        id: item.id,
+        mediaId: item.mediaId,
+        duration: item.duration,
+        transition: item.transition,
+        transitionDuration: item.transitionDuration,
+        volume: Boolean(item.volume),
+        repeat: item.repeat,
+        order: item.orderIndex,
+        mediaName: media?.name,
+        mediaType: media?.type,
+        mediaUrl: media?.url
       });
+    }
+    
     res.json({
       ...playlist,
       loop: Boolean(playlist.loop),
       shuffle: Boolean(playlist.shuffle),
-      items
+      items: enrichedItems
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -84,34 +90,34 @@ router.get('/:id', (req, res) => {
 });
 
 // Create playlist
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const { name, description, loop = true, shuffle = false, priority = 0, items = [] } = req.body;
     const id = uuidv4();
-    const now = new Date().toISOString();
+    const tenantId = (req as any).user.tenantId;
     
     const duration = items.reduce((sum: number, item: any) => sum + (item.duration || 0), 0);
 
     const playlist = {
       id,
-      tenantId: (req as any).user.tenantId,
+      tenantId,
       name,
       description: description || null,
       loop: Boolean(loop),
       shuffle: Boolean(shuffle),
       priority,
       duration,
-      items: [],
-      createdAt: now,
-      updatedAt: now
+      items: []
     };
 
-    db.database.playlists.push(playlist);
+    // Create playlist in database
+    const createdPlaylist = await db.createPlaylist(playlist);
 
-    // Insert playlist items
+    // Create playlist items
+    const createdItems = [];
     if (items && Array.isArray(items)) {
-      items.forEach((item: any, index: number) => {
-        db.database.playlistItems.push({
+      for (const [index, item] of items.entries()) {
+        const itemData = {
           id: item.id || uuidv4(),
           playlistId: id,
           mediaId: item.mediaId,
@@ -120,37 +126,33 @@ router.post('/', (req, res) => {
           transitionDuration: item.transitionDuration || null,
           volume: Boolean(item.volume),
           repeat: item.repeat || 1,
-          order: item.order !== undefined ? item.order : index,
           orderIndex: item.order !== undefined ? item.order : index
-        });
-      });
-    }
-
-    db.saveDatabase();
-    const playlistItems = db.database.playlistItems
-      .filter((pi: any) => pi.playlistId === id)
-      .sort((a: any, b: any) => a.orderIndex - b.orderIndex)
-      .map((item: any) => {
-        const media = db.database.mediaItems.find((m: any) => m.id === item.mediaId);
-        return {
-          id: item.id,
-          mediaId: item.mediaId,
-          duration: item.duration,
-          transition: item.transition,
-          transitionDuration: item.transitionDuration,
-          volume: Boolean(item.volume),
-          repeat: item.repeat,
-          order: item.orderIndex,
+        };
+        
+        const createdItem = await db.createPlaylistItem(itemData);
+        const media = await db.getMediaById(createdItem.mediaId);
+        
+        createdItems.push({
+          id: createdItem.id,
+          mediaId: createdItem.mediaId,
+          duration: createdItem.duration,
+          transition: createdItem.transition,
+          transitionDuration: createdItem.transitionDuration,
+          volume: Boolean(createdItem.volume),
+          repeat: createdItem.repeat,
+          order: createdItem.orderIndex,
           mediaName: media?.name,
           mediaType: media?.type,
           mediaUrl: media?.url
-        };
-      });
+        });
+      }
+    }
+
     res.status(201).json({
-      ...playlist,
-      loop: Boolean(playlist.loop),
-      shuffle: Boolean(playlist.shuffle),
-      items: playlistItems
+      ...createdPlaylist,
+      loop: Boolean(createdPlaylist.loop),
+      shuffle: Boolean(createdPlaylist.shuffle),
+      items: createdItems
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -158,35 +160,41 @@ router.post('/', (req, res) => {
 });
 
 // Update playlist
-router.put('/:id', (req, res) => {
+router.put('/:id', async (req, res) => {
   try {
     const { name, description, loop, shuffle, priority, items } = req.body;
     const tenantId = (req as any).user.tenantId;
-    const playlistIndex = db.database.playlists.findIndex((p: any) => p.id === req.params.id && p.tenantId === tenantId);
     
-    if (playlistIndex === -1) {
+    // Get existing playlist
+    const existingPlaylist = await db.getPlaylistById(req.params.id, tenantId);
+    if (!existingPlaylist) {
       return res.status(404).json({ error: 'Playlist not found' });
     }
 
-    const now = new Date().toISOString();
-    const duration = items ? items.reduce((sum: number, item: any) => sum + (item.duration || 0), 0) : db.database.playlists[playlistIndex].duration;
+    const duration = items ? items.reduce((sum: number, item: any) => sum + (item.duration || 0), 0) : existingPlaylist.duration;
     
-    db.database.playlists[playlistIndex] = {
-      ...db.database.playlists[playlistIndex],
+    const updatedPlaylistData = {
+      ...existingPlaylist,
       name,
       description: description || null,
       loop: Boolean(loop),
       shuffle: Boolean(shuffle),
       priority,
-      duration,
-      updatedAt: now
+      duration
     };
 
+    // Update playlist in database
+    const updatedPlaylist = await db.updatePlaylist(req.params.id, updatedPlaylistData, tenantId);
+
     // Update items if provided
+    let updatedItems = [];
     if (items && Array.isArray(items)) {
-      db.database.playlistItems = db.database.playlistItems.filter((pi: any) => pi.playlistId !== req.params.id);
-      items.forEach((item: any, index: number) => {
-        db.database.playlistItems.push({
+      // Delete old items
+      await db.deletePlaylistItemsByPlaylistId(req.params.id);
+      
+      // Create new items
+      for (const [index, item] of items.entries()) {
+        const itemData = {
           id: item.id || uuidv4(),
           playlistId: req.params.id,
           mediaId: item.mediaId,
@@ -195,19 +203,32 @@ router.put('/:id', (req, res) => {
           transitionDuration: item.transitionDuration || null,
           volume: Boolean(item.volume),
           repeat: item.repeat || 1,
-          order: item.order !== undefined ? item.order : index,
           orderIndex: item.order !== undefined ? item.order : index
+        };
+        
+        const createdItem = await db.createPlaylistItem(itemData);
+        const media = await db.getMediaById(createdItem.mediaId);
+        
+        updatedItems.push({
+          id: createdItem.id,
+          mediaId: createdItem.mediaId,
+          duration: createdItem.duration,
+          transition: createdItem.transition,
+          transitionDuration: createdItem.transitionDuration,
+          volume: Boolean(createdItem.volume),
+          repeat: createdItem.repeat,
+          order: createdItem.orderIndex,
+          mediaName: media?.name,
+          mediaType: media?.type,
+          mediaUrl: media?.url
         });
-      });
-    }
-
-    db.saveDatabase();
-    const playlistItems = db.database.playlistItems
-      .filter((pi: any) => pi.playlistId === req.params.id)
-      .sort((a: any, b: any) => a.orderIndex - b.orderIndex)
-      .map((item: any) => {
-        const media = db.database.mediaItems.find((m: any) => m.id === item.mediaId);
-        return {
+      }
+    } else {
+      // Get existing items if items not provided
+      const existingItems = await db.getPlaylistItemsByPlaylistId(req.params.id);
+      for (const item of existingItems) {
+        const media = await db.getMediaById(item.mediaId);
+        updatedItems.push({
           id: item.id,
           mediaId: item.mediaId,
           duration: item.duration,
@@ -219,13 +240,15 @@ router.put('/:id', (req, res) => {
           mediaName: media?.name,
           mediaType: media?.type,
           mediaUrl: media?.url
-        };
-      });
+        });
+      }
+    }
+
     res.json({
-      ...db.database.playlists[playlistIndex],
-      loop: Boolean(db.database.playlists[playlistIndex].loop),
-      shuffle: Boolean(db.database.playlists[playlistIndex].shuffle),
-      items: playlistItems
+      ...updatedPlaylist,
+      loop: Boolean(updatedPlaylist?.loop),
+      shuffle: Boolean(updatedPlaylist?.shuffle),
+      items: updatedItems
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -233,17 +256,22 @@ router.put('/:id', (req, res) => {
 });
 
 // Delete playlist
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
     const tenantId = (req as any).user.tenantId;
-    const playlistIndex = db.database.playlists.findIndex((p: any) => p.id === req.params.id && p.tenantId === tenantId);
-    if (playlistIndex === -1) {
+    
+    // Check if playlist exists
+    const existingPlaylist = await db.getPlaylistById(req.params.id, tenantId);
+    if (!existingPlaylist) {
       return res.status(404).json({ error: 'Playlist not found' });
     }
-    db.database.playlists.splice(playlistIndex, 1);
-    // Also delete playlist items
-    db.database.playlistItems = db.database.playlistItems.filter((pi: any) => pi.playlistId !== req.params.id);
-    db.saveDatabase();
+    
+    // Delete playlist items first
+    await db.deletePlaylistItemsByPlaylistId(req.params.id);
+    
+    // Delete playlist
+    await db.deletePlaylist(req.params.id, tenantId);
+    
     res.json({ message: 'Playlist deleted successfully' });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
