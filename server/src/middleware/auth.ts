@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { Request, Response, NextFunction } from 'express';
-import { database, User, Tenant } from '../db/database';
+import { db } from '../db/unified-database.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-in-production';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
@@ -58,8 +58,8 @@ export const authenticate = async (req: AuthenticatedRequest, res: Response, nex
     const decoded = verifyToken(token);
 
     // Kullanıcıyı database'den al
-    const user = database.users.find((u: User) => u.id === decoded.id && u.status === 'active');
-    if (!user) {
+    const user = await db.findUserById(decoded.id);
+    if (!user || user.status !== 'active') {
       return res.status(401).json({
         success: false,
         message: 'Kullanıcı bulunamadı veya aktif değil'
@@ -67,17 +67,17 @@ export const authenticate = async (req: AuthenticatedRequest, res: Response, nex
     }
 
     // Tenant'ı database'den al
-    const tenant = database.tenants.find((t: Tenant) => t.id === user.tenantId && t.status === 'active');
-    if (!tenant) {
+    const tenant = await db.findTenantById(user.tenantId);
+    if (!tenant || tenant.status !== 'active') {
       return res.status(401).json({
         success: false,
         message: 'Tenant bulunamadı veya aktif değil'
       });
     }
 
-    // Kullanıcının izinlerini al (basit role-based permissions)
-    const permissions: string[] = [];
-    if (user.role === 'admin') {
+    // Kullanıcının izinlerini al
+    const permissions = user.permissions || [];
+    if (user.role === 'tenant_admin' || user.role === 'admin') {
       permissions.push('*');
     } else if (user.role === 'user') {
       permissions.push('read', 'write');
@@ -197,23 +197,28 @@ export const rateLimit = (maxRequests: number = 100, windowMs: number = 15 * 60 
 
 // Login attempts tracking
 export const trackLoginAttempts = async (email: string, success: boolean) => {
-  const user = database.users.find((u: User) => u.email === email);
+  const user = await db.findUserByEmail(email);
   if (!user) return;
 
   if (success) {
-    user.loginAttempts = 0;
-    user.lockedUntil = null;
-    user.lastLogin = new Date().toISOString();
+    await db.updateUser(user.id, {
+      loginAttempts: 0,
+      lockedUntil: null,
+      lastLogin: new Date().toISOString()
+    });
   } else {
-    user.loginAttempts = (user.loginAttempts || 0) + 1;
+    const loginAttempts = (user.loginAttempts || 0) + 1;
+    const updates: any = {
+      loginAttempts
+    };
     
     // 5 başarısız denemeden sonra 15 dakika kilitle
-    if (user.loginAttempts >= 5) {
-      user.lockedUntil = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+    if (loginAttempts >= 5) {
+      updates.lockedUntil = new Date(Date.now() + 15 * 60 * 1000).toISOString();
     }
-  }
 
-  user.updatedAt = new Date().toISOString();
+    await db.updateUser(user.id, updates);
+  }
 };
 
 // Account lock check

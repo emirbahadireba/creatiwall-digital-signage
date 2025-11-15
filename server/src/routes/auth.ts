@@ -1,7 +1,7 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
-import db from '../db/database';
+import { db } from '../db/unified-database.js';
 import {
   generateToken,
   authenticate,
@@ -9,7 +9,7 @@ import {
   isAccountLocked,
   rateLimit,
   AuthenticatedRequest
-} from '../middleware/auth';
+} from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -55,7 +55,7 @@ router.post('/register', authRateLimit, async (req, res) => {
     }
 
     // Check if user already exists
-    const existingUser = db.database.users.find((u: any) => u.email.toLowerCase() === email.toLowerCase());
+    const existingUser = await db.findUserByEmail(email);
     if (existingUser) {
       return res.status(409).json({
         success: false,
@@ -65,9 +65,7 @@ router.post('/register', authRateLimit, async (req, res) => {
 
     // Check if company domain already exists
     const subdomain = companyDomain || companyName.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const existingTenant = db.database.tenants.find((t: any) =>
-      t.subdomain === subdomain || t.domain === `${subdomain}.creatiwall.com`
-    );
+    const existingTenant = await db.findTenantBySubdomain(subdomain);
     
     if (existingTenant) {
       return res.status(409).json({
@@ -82,7 +80,7 @@ router.post('/register', authRateLimit, async (req, res) => {
 
     // Create tenant
     const tenantId = uuidv4();
-    const newTenant = {
+    const newTenant = await db.createTenant({
       id: tenantId,
       name: companyName,
       domain: `${subdomain}.creatiwall.com`,
@@ -99,14 +97,12 @@ router.post('/register', authRateLimit, async (req, res) => {
         logo: null,
         primaryColor: '#ffc000',
         secondaryColor: '#333333'
-      },
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
+      }
+    });
 
     // Create user
     const userId = uuidv4();
-    const newUser = {
+    const newUser = await db.createUser({
       id: userId,
       tenantId: tenantId,
       email: email.toLowerCase(),
@@ -133,21 +129,14 @@ router.post('/register', authRateLimit, async (req, res) => {
           browser: true,
           mobile: false
         }
-      },
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-
-    // Save to database
-    db.database.tenants.push(newTenant);
-    db.database.users.push(newUser);
-    db.saveDatabase();
+      }
+    });
 
     // Generate token
     const token = generateToken(newUser);
 
     // Log audit event
-    const auditLog = {
+    await db.createAuditLog({
       id: uuidv4(),
       tenantId: tenantId,
       userId: userId,
@@ -161,13 +150,7 @@ router.post('/register', authRateLimit, async (req, res) => {
       ipAddress: req.ip,
       userAgent: req.get('User-Agent'),
       timestamp: new Date().toISOString()
-    };
-    const auditLogWithCreatedAt = {
-      ...auditLog,
-      createdAt: new Date().toISOString()
-    };
-    db.database.auditLogs.push(auditLogWithCreatedAt);
-    db.saveDatabase();
+    });
 
     res.status(201).json({
       success: true,
@@ -214,7 +197,7 @@ router.post('/login', authRateLimit, async (req, res) => {
     }
 
     // Find user
-    const user = db.database.users.find((u: any) => u.email.toLowerCase() === email.toLowerCase());
+    const user = await db.findUserByEmail(email);
     if (!user) {
       await trackLoginAttempts(email, false);
       return res.status(401).json({
@@ -251,7 +234,7 @@ router.post('/login', authRateLimit, async (req, res) => {
     }
 
     // Check tenant status
-    const tenant = db.database.tenants.find((t: any) => t.id === user.tenantId);
+    const tenant = await db.findTenantById(user.tenantId);
     if (!tenant || tenant.status !== 'active') {
       return res.status(401).json({
         success: false,
@@ -269,7 +252,7 @@ router.post('/login', authRateLimit, async (req, res) => {
 
     // Create session record
     const sessionId = uuidv4();
-    const session = {
+    await db.createSession({
       id: sessionId,
       userId: user.id,
       tenantId: user.tenantId,
@@ -277,14 +260,11 @@ router.post('/login', authRateLimit, async (req, res) => {
       ipAddress: req.ip,
       userAgent: req.get('User-Agent'),
       rememberMe: rememberMe,
-      expiresAt: new Date(Date.now() + (rememberMe ? 30 : 7) * 24 * 60 * 60 * 1000).toISOString(),
-      createdAt: new Date().toISOString(),
-      lastActivity: new Date().toISOString()
-    };
-    db.database.userSessions.push(session);
+      expiresAt: new Date(Date.now() + (rememberMe ? 30 : 7) * 24 * 60 * 60 * 1000).toISOString()
+    });
 
     // Log audit event
-    const auditLog = {
+    await db.createAuditLog({
       id: uuidv4(),
       tenantId: user.tenantId,
       userId: user.id,
@@ -298,13 +278,7 @@ router.post('/login', authRateLimit, async (req, res) => {
       ipAddress: req.ip,
       userAgent: req.get('User-Agent'),
       timestamp: new Date().toISOString()
-    };
-    const auditLogWithCreatedAt = {
-      ...auditLog,
-      createdAt: new Date().toISOString()
-    };
-    db.database.auditLogs.push(auditLogWithCreatedAt);
-    db.saveDatabase();
+    });
 
     res.json({
       success: true,
@@ -329,7 +303,7 @@ router.post('/login', authRateLimit, async (req, res) => {
         },
         session: {
           id: sessionId,
-          expiresAt: session.expiresAt
+          expiresAt: new Date(Date.now() + (rememberMe ? 30 : 7) * 24 * 60 * 60 * 1000).toISOString()
         }
       }
     });
@@ -351,13 +325,10 @@ router.post('/logout', authenticate, async (req: AuthenticatedRequest, res) => {
       const token = authHeader.substring(7);
       
       // Find and remove session
-      const sessionIndex = db.database.userSessions.findIndex((s: any) => s.token === token);
-      if (sessionIndex > -1) {
-        db.database.userSessions.splice(sessionIndex, 1);
-      }
+      await db.deleteSession(token);
 
       // Log audit event
-      const auditLog = {
+      await db.createAuditLog({
         id: uuidv4(),
         tenantId: req.user!.tenantId,
         userId: req.user!.id,
@@ -369,13 +340,7 @@ router.post('/logout', authenticate, async (req: AuthenticatedRequest, res) => {
         ipAddress: req.ip,
         userAgent: req.get('User-Agent'),
         timestamp: new Date().toISOString()
-      };
-      const auditLogWithCreatedAt = {
-        ...auditLog,
-        createdAt: new Date().toISOString()
-      };
-      db.database.auditLogs.push(auditLogWithCreatedAt);
-      db.saveDatabase();
+      });
     }
 
     res.json({
@@ -395,8 +360,8 @@ router.post('/logout', authenticate, async (req: AuthenticatedRequest, res) => {
 // Get current user profile
 router.get('/me', authenticate, async (req: AuthenticatedRequest, res) => {
   try {
-    const user = db.database.users.find((u: any) => u.id === req.user!.id);
-    const tenant = db.database.tenants.find((t: any) => t.id === req.user!.tenantId);
+    const user = await db.findUserById(req.user!.id);
+    const tenant = await db.findTenantById(req.user!.tenantId);
 
     if (!user || !tenant) {
       return res.status(404).json({
@@ -444,7 +409,7 @@ router.get('/me', authenticate, async (req: AuthenticatedRequest, res) => {
 // Refresh token endpoint
 router.post('/refresh', authenticate, async (req: AuthenticatedRequest, res) => {
   try {
-    const user = db.database.users.find((u: any) => u.id === req.user!.id);
+    const user = await db.findUserById(req.user!.id);
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -459,11 +424,20 @@ router.post('/refresh', authenticate, async (req: AuthenticatedRequest, res) => 
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const oldToken = authHeader.substring(7);
-      const session = db.database.userSessions.find((s: any) => s.token === oldToken);
+      const session = await db.findSessionByToken(oldToken);
       if (session) {
-        session.token = newToken;
-        session.lastActivity = new Date().toISOString();
-        db.saveDatabase();
+        // Delete old session and create new one
+        await db.deleteSession(oldToken);
+        await db.createSession({
+          id: session.id,
+          userId: session.userId,
+          tenantId: session.tenantId,
+          token: newToken,
+          ipAddress: session.ipAddress,
+          userAgent: session.userAgent,
+          rememberMe: session.rememberMe,
+          expiresAt: session.expiresAt
+        });
       }
     }
 
