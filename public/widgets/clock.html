@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dijital Saat Widget</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', 'Helvetica', Arial, sans-serif;
+      background: transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+    
+    .clock-container {
+      text-align: center;
+      padding: 20px;
+    }
+    
+    .time {
+      font-size: 72px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      line-height: 1;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+    }
+    
+    .date {
+      font-size: 24px;
+      font-weight: 400;
+      margin-top: 10px;
+      opacity: 0.9;
+    }
+    
+    .seconds {
+      font-size: 48px;
+      font-weight: 300;
+      opacity: 0.7;
+    }
+  </style>
+</head>
+<body>
+  <div class="clock-container">
+    <div class="time" id="time">00:00</div>
+    <div class="seconds" id="seconds">00</div>
+    <div class="date" id="date">1 Ocak 2024</div>
+  </div>
+
+  <script>
+    // Get config from parent or URL params
+    const urlParams = new URLSearchParams(window.location.search);
+    const configStr = urlParams.get('config');
+    const config = configStr ? JSON.parse(decodeURIComponent(configStr)) : {};
+    
+    // Apply configuration
+    const timeColor = config.timeColor || '#ffffff';
+    const dateColor = config.dateColor || '#ffffff';
+    const backgroundColor = config.backgroundColor || 'transparent';
+    const showSeconds = config.showSeconds !== false;
+    const format24h = config.format24h !== false;
+    const showDate = config.showDate !== false;
+    
+    document.body.style.background = backgroundColor;
+    document.getElementById('time').style.color = timeColor;
+    document.getElementById('date').style.color = dateColor;
+    document.getElementById('seconds').style.color = timeColor;
+    
+    if (!showSeconds) {
+      document.getElementById('seconds').style.display = 'none';
+    }
+    
+    if (!showDate) {
+      document.getElementById('date').style.display = 'none';
+    }
+    
+    const months = [
+      'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
+      'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
+    ];
+    
+    const days = [
+      'Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'
+    ];
+    
+    function updateClock() {
+      const now = new Date();
+      
+      let hours = now.getHours();
+      const minutes = now.getMinutes();
+      const seconds = now.getSeconds();
+      
+      if (!format24h) {
+        hours = hours % 12 || 12;
+      }
+      
+      const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+      const secondsStr = String(seconds).padStart(2, '0');
+      
+      const day = days[now.getDay()];
+      const date = now.getDate();
+      const month = months[now.getMonth()];
+      const year = now.getFullYear();
+      const dateStr = `${day}, ${date} ${month} ${year}`;
+      
+      document.getElementById('time').textContent = timeStr;
+      document.getElementById('seconds').textContent = secondsStr;
+      document.getElementById('date').textContent = dateStr;
+    }
+    
+    // Update every second
+    updateClock();
+    setInterval(updateClock, 1000);
+    
+    // Listen for config updates from parent
+    window.addEventListener('message', (event) => {
+      if (event.data.type === 'CONFIG_UPDATE') {
+        location.reload();
+      }
+    });
+  </script>
+</body>
+</html>
+

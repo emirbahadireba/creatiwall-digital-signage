@@ -1,0 +1,46 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "server/src/index.ts",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/server/src/index.ts"
+    },
+    {
+      "src": "/uploads/(.*)",
+      "dest": "/server/uploads/$1"
+    },
+    {
+      "src": "/widgets/(.*)",
+      "dest": "/public/widgets/$1"
+    },
+    {
+      "src": "/player.html",
+      "dest": "/public/player.html"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/dist/$1"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  },
+  "functions": {
+    "server/src/index.ts": {
+      "maxDuration": 30
+    }
+  }
+}

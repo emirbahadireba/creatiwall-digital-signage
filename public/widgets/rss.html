@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RSS Feed Widget</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', 'Helvetica', Arial, sans-serif;
+      background: transparent;
+      overflow: hidden;
+      height: 100vh;
+    }
+    
+    .rss-container {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      padding: 20px;
+    }
+    
+    .rss-header {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 2px solid currentColor;
+    }
+    
+    .rss-items {
+      flex: 1;
+      overflow: hidden;
+      position: relative;
+    }
+    
+    /* Liste Modu */
+    .mode-list .rss-item {
+      padding: 15px;
+      margin-bottom: 15px;
+      border-radius: 8px;
+      animation: slideIn 0.5s ease;
+    }
+    
+    /* Compact Layout */
+    .layout-compact .rss-item { padding: 10px; margin-bottom: 10px; }
+    .layout-compact .rss-item-title { font-size: 16px; }
+    .layout-compact .rss-item-description { font-size: 14px; }
+    
+    /* Normal Layout */
+    .layout-normal .rss-item { padding: 15px; margin-bottom: 15px; }
+    .layout-normal .rss-item-title { font-size: 20px; }
+    .layout-normal .rss-item-description { font-size: 16px; }
+    
+    /* Large Layout */
+    .layout-large .rss-item { padding: 20px; margin-bottom: 20px; }
+    .layout-large .rss-item-title { font-size: 24px; }
+    .layout-large .rss-item-description { font-size: 18px; }
+    
+    .rss-item-title {
+      font-weight: 600;
+      margin-bottom: 8px;
+      line-height: 1.3;
+    }
+    
+    .rss-item-description {
+      line-height: 1.5;
+    }
+    
+    .rss-item-date {
+      font-size: 14px;
+      margin-top: 8px;
+      opacity: 0.8;
+    }
+    
+    /* Yatay Ticker Modu */
+    .mode-ticker .rss-items {
+      display: flex;
+      animation: tickerScroll linear infinite;
+    }
+    
+    .mode-ticker .rss-item {
+      margin-right: 30px;
+      flex-shrink: 0;
+      min-width: 400px;
+      padding: 15px;
+    }
+    
+    @keyframes tickerScroll {
+      0% { transform: translateX(100%); }
+      100% { transform: translateX(-100%); }
+    }
+    
+    /* Card Slider Modu */
+    .mode-slider .rss-items {
+      position: relative;
+      height: 100%;
+    }
+    
+    .mode-slider .rss-item {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 30px;
+      opacity: 0;
+      transform: translateX(100%);
+      transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .mode-slider .rss-item.active {
+      opacity: 1;
+      transform: translateX(0);
+    }
+    
+    .mode-slider .rss-item.prev {
+      opacity: 0;
+      transform: translateX(-100%);
+    }
+    
+    /* Dikey Scroll Modu */
+    .mode-vertical-scroll .rss-items {
+      position: relative;
+      height: 100%;
+    }
+    
+    .mode-vertical-scroll .rss-item {
+      padding: 15px;
+      margin-bottom: 15px;
+      animation: verticalScroll linear infinite;
+    }
+    
+    @keyframes verticalScroll {
+      0% { transform: translateY(100%); opacity: 0; }
+      10% { opacity: 1; }
+      90% { opacity: 1; }
+      100% { transform: translateY(-100%); opacity: 0; }
+    }
+    
+    /* Fade Modu */
+    .mode-fade .rss-items {
+      position: relative;
+      height: 100%;
+    }
+    
+    .mode-fade .rss-item {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 30px;
+      opacity: 0;
+      transition: opacity 1s ease-in-out;
+    }
+    
+    .mode-fade .rss-item.active {
+      opacity: 1;
+    }
+    
+    .loading, .error {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      font-size: 24px;
+      text-align: center;
+    }
+    
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="rss-container" id="container">
+    <div class="loading" id="loading">Haberler yükleniyor...</div>
+  </div>
+
+  <script>
+    // Get config
+    const urlParams = new URLSearchParams(window.location.search);
+    const configStr = urlParams.get('config');
+    
+    console.log('RSS Widget - Config String:', configStr);
+    
+    let config = {};
+    try {
+      config = configStr ? JSON.parse(decodeURIComponent(configStr)) : {};
+      console.log('RSS Widget - Parsed Config:', config);
+    } catch (error) {
+      console.error('RSS Widget - Config parse error:', error);
+    }
+    
+    // Configuration
+    const feedUrl = config.feedUrl || 'https://www.hurriyet.com.tr/rss/anasayfa';
+    const maxItems = config.maxItems || 10;
+    const refreshInterval = (config.refreshInterval || 300) * 1000;
+    const textColor = config.textColor || '#ffffff';
+    const backgroundColor = config.backgroundColor || 'transparent';
+    const showTitle = config.showTitle !== false;
+    const titleText = config.titleText || 'Son Haberler';
+    const displayMode = config.displayMode || 'list';
+    const animationSpeed = config.animationSpeed || 5;
+    const itemsPerView = config.itemsPerView || 3;
+    const layoutSize = config.layoutSize || 'normal';
+    
+    console.log('RSS Widget - Display Mode:', displayMode);
+    console.log('RSS Widget - Feed URL:', feedUrl);
+    
+    document.body.style.background = backgroundColor;
+    document.body.style.color = textColor;
+    
+    const container = document.getElementById('container');
+    const proxyUrl = 'http://localhost:3001/api/rss-proxy/fetch?url=';
+    
+    let currentIndex = 0;
+    let items = [];
+    let animationInterval;
+    
+    async function fetchRSS() {
+      try {
+        const response = await fetch(proxyUrl + encodeURIComponent(feedUrl));
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const data = await response.text();
+        const parser = new DOMParser();
+        const xml = parser.parseFromString(data, 'text/xml');
+        
+        items = Array.from(xml.querySelectorAll('item')).slice(0, maxItems);
+        
+        if (items.length === 0) {
+          throw new Error('RSS feed\'de haber bulunamadı');
+        }
+        
+        displayItems(items);
+      } catch (error) {
+        console.error('RSS fetch error:', error);
+        container.innerHTML = '<div class="error">RSS beslemesi yüklenirken hata oluştu.<br>Lütfen URL\'i kontrol edin veya başka bir kaynak deneyin.</div>';
+      }
+    }
+    
+    function displayItems(itemsArray) {
+      container.className = `rss-container mode-${displayMode} layout-${layoutSize}`;
+      
+      let html = '';
+      
+      if (showTitle) {
+        html += `<div class="rss-header">${titleText}</div>`;
+      }
+      
+      html += '<div class="rss-items" id="items-container">';
+      
+      itemsArray.forEach((item, index) => {
+        const title = item.querySelector('title')?.textContent || '';
+        const description = item.querySelector('description')?.textContent || '';
+        const pubDate = item.querySelector('pubDate')?.textContent || '';
+        
+        const cleanDesc = description.replace(/<[^>]*>/g, '').substring(0, 200);
+        
+        const date = pubDate ? new Date(pubDate).toLocaleString('tr-TR', {
+          day: 'numeric',
+          month: 'long',
+          hour: '2-digit',
+          minute: '2-digit'
+        }) : '';
+        
+        const activeClass = (displayMode === 'slider' || displayMode === 'fade') && index === 0 ? 'active' : '';
+        
+        html += `
+          <div class="rss-item ${activeClass}" data-index="${index}">
+            <div class="rss-item-title">${title}</div>
+            <div class="rss-item-description">${cleanDesc}...</div>
+            ${date ? `<div class="rss-item-date">${date}</div>` : ''}
+          </div>
+        `;
+      });
+      
+      html += '</div>';
+      
+      container.innerHTML = html;
+      
+      // Mod'a göre animasyon başlat
+      if (displayMode === 'ticker') {
+        setupTickerMode();
+      } else if (displayMode === 'slider') {
+        setupSliderMode();
+      } else if (displayMode === 'fade') {
+        setupFadeMode();
+      } else if (displayMode === 'vertical-scroll') {
+        setupVerticalScrollMode();
+      } else if (displayMode === 'list') {
+        setupListMode();
+      }
+    }
+    
+    function setupListMode() {
+      // Liste modunda sadece belirtilen sayıda item göster
+      const allItems = container.querySelectorAll('.rss-item');
+      allItems.forEach((item, index) => {
+        if (index >= itemsPerView) {
+          item.style.display = 'none';
+        }
+      });
+    }
+    
+    function setupTickerMode() {
+      const itemsContainer = container.querySelector('.rss-items');
+      if (itemsContainer) {
+        itemsContainer.style.animationDuration = (items.length * animationSpeed) + 's';
+      }
+    }
+    
+    function setupSliderMode() {
+      if (animationInterval) clearInterval(animationInterval);
+      
+      animationInterval = setInterval(() => {
+        const allItems = container.querySelectorAll('.rss-item');
+        const currentItem = allItems[currentIndex];
+        
+        currentIndex = (currentIndex + 1) % allItems.length;
+        const nextItem = allItems[currentIndex];
+        
+        currentItem.classList.remove('active');
+        currentItem.classList.add('prev');
+        
+        setTimeout(() => {
+          currentItem.classList.remove('prev');
+        }, 800);
+        
+        nextItem.classList.add('active');
+      }, animationSpeed * 1000);
+    }
+    
+    function setupFadeMode() {
+      if (animationInterval) clearInterval(animationInterval);
+      
+      animationInterval = setInterval(() => {
+        const allItems = container.querySelectorAll('.rss-item');
+        allItems[currentIndex].classList.remove('active');
+        
+        currentIndex = (currentIndex + 1) % allItems.length;
+        allItems[currentIndex].classList.add('active');
+      }, animationSpeed * 1000);
+    }
+    
+    function setupVerticalScrollMode() {
+      const allItems = container.querySelectorAll('.rss-item');
+      allItems.forEach((item, index) => {
+        item.style.animationDuration = (animationSpeed * items.length) + 's';
+        item.style.animationDelay = (index * animationSpeed) + 's';
+      });
+    }
+    
+    // Initial fetch
+    fetchRSS();
+    
+    // Auto refresh
+    setInterval(fetchRSS, refreshInterval);
+    
+    // Listen for config updates
+    window.addEventListener('message', (event) => {
+      if (event.data.type === 'CONFIG_UPDATE') {
+        location.reload();
+      }
+    });
+  </script>
+</body>
+</html>

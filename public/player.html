@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CreatiWall Player</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html, body {
+            width: 1920px;
+            height: 1080px;
+            background: #222222;
+            overflow: hidden;
+            cursor: none;
+            font-family: Arial, sans-serif;
+        }
+        
+        #player-container {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #000000;
+            border: 3px solid #00ff00;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+        }
+        
+        .zone {
+            position: absolute;
+            border: 1px dashed rgba(255, 255, 255, 0.3);
+        }
+        
+        .zone img, .zone video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .text-zone {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px;
+            color: #ffffff;
+            text-align: center;
+            background: rgba(0, 100, 200, 0.3);
+        }
+        
+        .media-zone {
+            background: rgba(200, 0, 0, 0.3);
+        }
+        
+        .widget-zone {
+            background: rgba(0, 200, 100, 0.3);
+        }
+        
+        .widget-zone iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: transparent;
+        }
+        
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #ffffff;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 14px;
+            z-index: 1000;
+        }
+        
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ffffff;
+            font-size: 24px;
+            z-index: 999;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <div>Ekran: 1920x1080</div>
+        <div id="layout-info">Layout yükleniyor...</div>
+        <div id="container-info">Container: -</div>
+    </div>
+    
+    <div id="loading">Layout yükleniyor...</div>
+    <div id="player-container" style="display: none;"></div>
+
+    <script>
+        let currentLayout = null;
+        let mediaItems = [];
+
+        async function init() {
+            try {
+                const urlParams = new URLSearchParams(window.location.search);
+                const layoutId = urlParams.get('id') || urlParams.get('layout');
+                
+                if (!layoutId) {
+                    throw new Error('Layout ID not specified');
+                }
+                
+                await loadLayout(layoutId);
+                setupLayout();
+                renderLayout();
+                
+            } catch (error) {
+                console.error('Player initialization error:', error);
+                document.getElementById('loading').textContent = 'Hata: ' + error.message;
+            }
+        }
+
+        async function loadLayout(layoutId) {
+            try {
+                // Check if this is a temporary layout
+                if (layoutId.startsWith('temp-')) {
+                    const tempLayout = sessionStorage.getItem('tempLayout');
+                    if (!tempLayout) {
+                        throw new Error('Temporary layout not found');
+                    }
+                    
+                    currentLayout = JSON.parse(tempLayout);
+                    
+                    // Still need to fetch media items
+                    const mediaResponse = await fetch('http://localhost:3001/api/media');
+                    if (!mediaResponse.ok) throw new Error('Media fetch failed');
+                    mediaItems = await mediaResponse.json();
+                    
+                    console.log('Temporary layout loaded:', currentLayout);
+                } else {
+                    // Regular layout from database
+                    const [layoutResponse, mediaResponse] = await Promise.all([
+                        fetch(`http://localhost:3001/api/layouts/${layoutId}`),
+                        fetch('http://localhost:3001/api/media')
+                    ]);
+                    
+                    if (!layoutResponse.ok) throw new Error('Layout fetch failed');
+                    if (!mediaResponse.ok) throw new Error('Media fetch failed');
+                    
+                    currentLayout = await layoutResponse.json();
+                    mediaItems = await mediaResponse.json();
+                    
+                    console.log('Layout loaded:', currentLayout);
+                }
+                
+            } catch (error) {
+                console.error('Load layout error:', error);
+                throw error;
+            }
+        }
+
+        function setupLayout() {
+            if (!currentLayout || !currentLayout.dimensions) return;
+            
+            const container = document.getElementById('player-container');
+            const { width: layoutWidth, height: layoutHeight } = currentLayout.dimensions;
+            
+            // Ekrana sığdırmak için scale hesapla (alttan üstten daha fazla boşluk)
+            const maxWidth = 1920 - 60; // 30px sağ/sol margin
+            const maxHeight = 1080 - 120; // 60px alt/üst margin
+            
+            const scaleX = maxWidth / layoutWidth;
+            const scaleY = maxHeight / layoutHeight;
+            const scale = Math.min(scaleX, scaleY);
+            
+            // Container'ı layout boyutunda ayarla
+            container.style.width = layoutWidth + 'px';
+            container.style.height = layoutHeight + 'px';
+            
+            // Layout background color'ı uygula
+            if (currentLayout.backgroundColor) {
+                container.style.backgroundColor = currentLayout.backgroundColor;
+                console.log('Applied background color:', currentLayout.backgroundColor);
+            } else {
+                // Default background color
+                container.style.backgroundColor = '#000000';
+                console.log('Applied default background color: #000000');
+            }
+            
+            // Scale uygula
+            container.style.transform = `translate(-50%, -50%) scale(${scale})`;
+            
+            // Info güncelle
+            document.getElementById('layout-info').textContent = `Layout: ${layoutWidth}x${layoutHeight}`;
+            document.getElementById('container-info').textContent = `Scale: ${scale.toFixed(2)} (ortada)`;
+            
+            console.log('Ortalanmış layout:', layoutWidth + 'x' + layoutHeight, 'Scale:', scale.toFixed(2));
+            console.log('Layout background color:', currentLayout.backgroundColor);
+        }
+
+        function renderLayout() {
+            if (!currentLayout || !currentLayout.zones) {
+                throw new Error('Invalid layout data');
+            }
+            
+            const container = document.getElementById('player-container');
+            const loading = document.getElementById('loading');
+            
+            loading.style.display = 'none';
+            container.style.display = 'block';
+            
+            // Clear container
+            container.innerHTML = '';
+            
+            // Render each zone
+            currentLayout.zones.forEach((zone, index) => {
+                const zoneElement = createZoneElement(zone, index);
+                if (zoneElement) {
+                    container.appendChild(zoneElement);
+                }
+            });
+            
+            console.log('Layout rendered with', currentLayout.zones.length, 'zones');
+        }
+
+        function createZoneElement(zone, index) {
+            const element = document.createElement('div');
+            element.className = 'zone';
+            element.dataset.index = index + 1;
+            element.style.left = `${zone.x}%`;
+            element.style.top = `${zone.y}%`;
+            element.style.width = `${zone.width}%`;
+            element.style.height = `${zone.height}%`;
+            
+            // Zone bilgisi ekle
+            const info = document.createElement('div');
+            info.style.position = 'absolute';
+            info.style.top = '5px';
+            info.style.left = '5px';
+            info.style.fontSize = '12px';
+            info.style.color = '#ffffff';
+            info.style.background = 'rgba(0,0,0,0.7)';
+            info.style.padding = '2px 5px';
+            info.style.borderRadius = '3px';
+            info.style.zIndex = '10';
+            info.textContent = `Zone ${index + 1}: ${zone.type}`;
+            element.appendChild(info);
+            
+            if (zone.backgroundColor) {
+                element.style.backgroundColor = zone.backgroundColor;
+            }
+            if (zone.borderRadius) {
+                element.style.borderRadius = `${zone.borderRadius}px`;
+            }
+            if (zone.opacity !== undefined) {
+                element.style.opacity = zone.opacity;
+            }
+            
+            switch (zone.type) {
+                case 'media':
+                    return createMediaZone(element, zone);
+                case 'text':
+                    return createTextZone(element, zone);
+                case 'widgets':
+                case 'widget':
+                case 'clock':
+                    return createWidgetZone(element, zone, 'widget-clock');
+                case 'weather':
+                    return createWeatherZone(element, zone);
+                case 'rss':
+                    return createRssZone(element, zone);
+                default:
+                    element.className += ' text-zone';
+                    element.innerHTML += '<div style="margin-top: 20px;">Bilinmeyen zone tipi: ' + zone.type + '</div>';
+                    return element;
+            }
+        }
+
+        function createMediaZone(element, zone) {
+            element.className += ' media-zone';
+            
+            if (!zone.mediaId) {
+                element.innerHTML += '<div style="color: white; text-align: center; padding: 20px;">Medya ID yok</div>';
+                return element;
+            }
+            
+            const media = mediaItems.find(m => m.id === zone.mediaId);
+            if (!media) {
+                element.innerHTML += '<div style="color: white; text-align: center; padding: 20px;">Medya bulunamadı</div>';
+                return element;
+            }
+            
+            const mediaUrl = media.url.startsWith('http') 
+                ? media.url 
+                : (media.url.startsWith('/') ? `http://localhost:3001${media.url}` : `http://localhost:3001/api${media.url}`);
+            
+            if (media.type === 'image') {
+                const img = document.createElement('img');
+                img.src = mediaUrl;
+                img.alt = '';
+                img.onerror = () => {
+                    element.innerHTML += '<div style="color: white; text-align: center; padding: 20px;">Resim yüklenemedi</div>';
+                };
+                element.appendChild(img);
+            } else if (media.type === 'video') {
+                const video = document.createElement('video');
+                video.src = mediaUrl;
+                video.autoplay = true;
+                video.loop = true;
+                video.muted = true;
+                video.playsInline = true;
+                video.onerror = () => {
+                    element.innerHTML += '<div style="color: white; text-align: center; padding: 20px;">Video yüklenemedi</div>';
+                };
+                element.appendChild(video);
+            }
+            
+            return element;
+        }
+
+        function createTextZone(element, zone) {
+            element.className += ' text-zone';
+            
+            if (!zone.content) {
+                element.innerHTML += '<div>Metin içeriği yok</div>';
+                return element;
+            }
+            
+            element.style.color = zone.textColor || '#ffffff';
+            element.style.fontSize = zone.fontSize ? `${zone.fontSize}px` : '16px';
+            element.style.textAlign = zone.textAlign || 'center';
+            element.style.justifyContent = zone.textAlign === 'left' ? 'flex-start' : 
+                                            zone.textAlign === 'right' ? 'flex-end' : 'center';
+            
+            const span = document.createElement('span');
+            span.textContent = zone.content;
+            span.style.marginTop = '20px';
+            element.appendChild(span);
+            
+            return element;
+        }
+
+        function createClockZone(element, zone) {
+            return createWidgetZone(element, zone, 'widget-clock');
+        }
+
+        function createWeatherZone(element, zone) {
+            return createWidgetZone(element, zone, 'widget-weather');
+        }
+
+        function createRssZone(element, zone) {
+            return createWidgetZone(element, zone, 'widget-rss');
+        }
+
+        function createWidgetZone(element, zone, defaultTemplateId) {
+            element.className += ' widget-zone';
+            
+            if (!zone.widgetInstanceId) {
+                element.innerHTML += '<div style="color: white; text-align: center; padding: 20px;">Widget Instance ID yok</div>';
+                return element;
+            }
+            
+            // Widget instance'ı yükle
+            loadWidgetInstance(zone.widgetInstanceId).then(instance => {
+                if (!instance) {
+                    element.innerHTML = '<div style="color: white; text-align: center; padding: 20px;">Widget bulunamadı</div>';
+                    return;
+                }
+                
+                // Widget iframe'i oluştur
+                const iframe = document.createElement('iframe');
+                iframe.style.width = '100%';
+                iframe.style.height = '100%';
+                iframe.style.border = 'none';
+                iframe.style.background = 'transparent';
+                iframe.sandbox = 'allow-scripts allow-same-origin';
+                
+                // Widget URL'ini oluştur
+                const configParam = encodeURIComponent(JSON.stringify(instance.config));
+                const widgetUrl = `http://localhost:3001${instance.template.htmlUrl}?config=${configParam}`;
+                iframe.src = widgetUrl;
+                
+                console.log('Loading widget:', instance.name, 'URL:', widgetUrl);
+                
+                // Zone info'yu güncelle
+                const info = element.querySelector('div');
+                if (info) {
+                    info.textContent = `Zone ${element.dataset.index}: ${instance.name}`;
+                }
+                
+                element.appendChild(iframe);
+            }).catch(error => {
+                console.error('Widget load error:', error);
+                element.innerHTML += '<div style="color: white; text-align: center; padding: 20px;">Widget yüklenemedi: ' + error.message + '</div>';
+            });
+            
+            return element;
+        }
+
+        async function loadWidgetInstance(instanceId) {
+            try {
+                const response = await fetch(`http://localhost:3001/api/widgets/instances/${instanceId}`);
+                if (!response.ok) throw new Error('Widget instance not found');
+                return await response.json();
+            } catch (error) {
+                console.error('Load widget instance error:', error);
+                return null;
+            }
+        }
+
+        // Initialize when page loads
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
