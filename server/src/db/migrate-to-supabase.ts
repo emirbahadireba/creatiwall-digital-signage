@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import supabase from './supabase.js';
+import { createClient } from '@supabase/supabase-js';
 import bcrypt from 'bcryptjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -35,7 +35,7 @@ async function loadJsonDatabase(): Promise<JsonDatabase> {
   }
 }
 
-async function migrateTenants(tenants: any[]) {
+async function migrateTenants(supabase: any, tenants: any[]) {
   console.log('Migrating tenants...');
   
   for (const tenant of tenants) {
@@ -62,7 +62,7 @@ async function migrateTenants(tenants: any[]) {
   }
 }
 
-async function migrateUsers(users: any[]) {
+async function migrateUsers(supabase: any, users: any[]) {
   console.log('Migrating users...');
   
   for (const user of users) {
@@ -106,7 +106,7 @@ async function migrateUsers(users: any[]) {
   }
 }
 
-async function migrateDevices(devices: any[]) {
+async function migrateDevices(supabase: any, devices: any[]) {
   console.log('Migrating devices...');
   
   for (const device of devices) {
@@ -133,7 +133,7 @@ async function migrateDevices(devices: any[]) {
   }
 }
 
-async function migrateMediaItems(mediaItems: any[]) {
+async function migrateMediaItems(supabase: any, mediaItems: any[]) {
   console.log('Migrating media items...');
   
   for (const media of mediaItems) {
@@ -162,7 +162,7 @@ async function migrateMediaItems(mediaItems: any[]) {
   }
 }
 
-async function migrateLayouts(layouts: any[]) {
+async function migrateLayouts(supabase: any, layouts: any[]) {
   console.log('Migrating layouts...');
   
   for (const layout of layouts) {
@@ -191,7 +191,7 @@ async function migrateLayouts(layouts: any[]) {
   }
 }
 
-async function migrateZones(zones: any[]) {
+async function migrateZones(supabase: any, zones: any[]) {
   console.log('Migrating zones...');
   
   for (const zone of zones) {
@@ -230,7 +230,7 @@ async function migrateZones(zones: any[]) {
   }
 }
 
-async function migrateWidgetTemplates(templates: any[]) {
+async function migrateWidgetTemplates(supabase: any, templates: any[]) {
   console.log('Migrating widget templates...');
   
   for (const template of templates) {
@@ -261,7 +261,7 @@ async function migrateWidgetTemplates(templates: any[]) {
   }
 }
 
-async function migrateWidgetInstances(instances: any[]) {
+async function migrateWidgetInstances(supabase: any, instances: any[]) {
   console.log('Migrating widget instances...');
   
   for (const instance of instances) {
@@ -285,7 +285,7 @@ async function migrateWidgetInstances(instances: any[]) {
   }
 }
 
-async function migrateAuditLogs(logs: any[]) {
+async function migrateAuditLogs(supabase: any, logs: any[]) {
   console.log('Migrating audit logs...');
   
   for (const log of logs) {
@@ -315,19 +315,35 @@ async function main() {
   try {
     console.log('🚀 Starting migration from JSON to Supabase...');
     
+    // Check environment variables
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error('Missing Supabase environment variables. Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY');
+    }
+    
+    // Create Supabase client
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    });
+    
     // Load JSON database
     const jsonDb = await loadJsonDatabase();
     
     // Migrate in order (respecting foreign key constraints)
-    await migrateTenants(jsonDb.tenants || []);
-    await migrateUsers(jsonDb.users || []);
-    await migrateDevices(jsonDb.devices || []);
-    await migrateMediaItems(jsonDb.mediaItems || []);
-    await migrateLayouts(jsonDb.layouts || []);
-    await migrateZones(jsonDb.zones || []);
-    await migrateWidgetTemplates(jsonDb.widgetTemplates || []);
-    await migrateWidgetInstances(jsonDb.widgetInstances || []);
-    await migrateAuditLogs(jsonDb.auditLogs || []);
+    await migrateTenants(supabase, jsonDb.tenants || []);
+    await migrateUsers(supabase, jsonDb.users || []);
+    await migrateDevices(supabase, jsonDb.devices || []);
+    await migrateMediaItems(supabase, jsonDb.mediaItems || []);
+    await migrateLayouts(supabase, jsonDb.layouts || []);
+    await migrateZones(supabase, jsonDb.zones || []);
+    await migrateWidgetTemplates(supabase, jsonDb.widgetTemplates || []);
+    await migrateWidgetInstances(supabase, jsonDb.widgetInstances || []);
+    await migrateAuditLogs(supabase, jsonDb.auditLogs || []);
     
     console.log('✅ Migration completed successfully!');
     console.log('📊 Migration Summary:');
