@@ -111,6 +111,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const { email, password } = req.body;
+    console.log('Login attempt for:', email);
 
     if (!email || !password) {
       return res.status(400).json({
@@ -120,17 +121,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const db = readDatabase();
+    console.log('Database loaded, users count:', db.users?.length || 0);
+    
     const user = db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    console.log('User found:', !!user);
 
     if (!user) {
+      console.log('User not found for email:', email);
       return res.status(401).json({
         success: false,
         error: 'Geçersiz email veya şifre'
       });
     }
 
+    console.log('Comparing password for user:', user.id);
     const isValidPassword = await bcrypt.compare(password, user.password);
+    console.log('Password valid:', isValidPassword);
+    
     if (!isValidPassword) {
+      console.log('Invalid password for user:', user.id);
       return res.status(401).json({
         success: false,
         error: 'Geçersiz email veya şifre'
