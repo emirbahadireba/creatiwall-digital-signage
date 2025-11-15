@@ -29,7 +29,12 @@ const WidgetConfigModal: React.FC<WidgetConfigModalProps> = ({
   useEffect(() => {
     if (iframeRef.current && showPreview) {
       const configParam = encodeURIComponent(JSON.stringify(config));
-      const url = `http://localhost:3001${template.htmlUrl}?config=${configParam}`;
+      const baseUrl = import.meta.env.VITE_API_URL || (
+        import.meta.env.MODE === 'production'
+          ? ''
+          : 'http://localhost:3001'
+      );
+      const url = `${baseUrl}${template.htmlUrl}?config=${configParam}`;
       iframeRef.current.src = url;
     }
   }, [config, template.htmlUrl, showPreview]);

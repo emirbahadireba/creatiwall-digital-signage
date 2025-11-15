@@ -601,7 +601,12 @@ export default function LayoutDesigner() {
   // Fetch widget instances
   const fetchWidgetInstances = useCallback(async () => {
     try {
-      const response = await fetch('http://localhost:3001/api/widgets/instances');
+      const baseUrl = import.meta.env.VITE_API_URL || (
+        import.meta.env.MODE === 'production'
+          ? '/api'
+          : 'http://localhost:3001/api'
+      );
+      const response = await fetch(`${baseUrl}/widgets/instances`);
       if (response.ok) {
         const data = await response.json();
         setWidgetInstances(data);
@@ -2241,7 +2246,12 @@ export default function LayoutDesigner() {
                         }
                         
                         const configParam = encodeURIComponent(JSON.stringify(instance.config));
-                        const iframeUrl = `http://localhost:3001${instance.template.htmlUrl}?config=${configParam}`;
+                        const baseUrl = import.meta.env.VITE_API_URL || (
+                          import.meta.env.MODE === 'production'
+                            ? ''
+                            : 'http://localhost:3001'
+                        );
+                        const iframeUrl = `${baseUrl}${instance.template.htmlUrl}?config=${configParam}`;
                         
                         return (
                           <iframe
@@ -2509,7 +2519,12 @@ export default function LayoutDesigner() {
                         }
                         
                         const configParam = encodeURIComponent(JSON.stringify(instance.config));
-                        const iframeUrl = `http://localhost:3001${instance.template.htmlUrl}?config=${configParam}`;
+                        const baseUrl = import.meta.env.VITE_API_URL || (
+                          import.meta.env.MODE === 'production'
+                            ? ''
+                            : 'http://localhost:3001'
+                        );
+                        const iframeUrl = `${baseUrl}${instance.template.htmlUrl}?config=${configParam}`;
                         
                         return (
                           <iframe

@@ -143,7 +143,7 @@ class ApiService {
     } catch (error: unknown) {
       // Network error or fetch failed
       if (error instanceof Error && error.name === 'TypeError' && error.message.includes('fetch')) {
-        throw new Error('Backend sunucusuna bağlanılamıyor. Lütfen backend\'in çalıştığından emin olun (http://localhost:3001)');
+        throw new Error('Backend sunucusuna bağlanılamıyor. Lütfen backend\'in çalıştığından emin olun.');
       }
       throw error;
     }

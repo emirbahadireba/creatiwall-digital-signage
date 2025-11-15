@@ -130,7 +130,7 @@ const LayoutPreview = () => {
             return (
               <div key={zone.id} style={zoneStyle}>
                 <img
-                  src={media.url.startsWith('http') ? media.url : `http://localhost:3001${media.url}`}
+                  src={media.url.startsWith('http') ? media.url : `${import.meta.env.VITE_API_URL || (import.meta.env.MODE === 'production' ? '' : 'http://localhost:3001')}${media.url}`}
                   alt={media.name}
                   className="w-full h-full object-cover"
                 />
@@ -142,7 +142,7 @@ const LayoutPreview = () => {
             return (
               <div key={zone.id} style={zoneStyle}>
                 <video
-                  src={media.url.startsWith('http') ? media.url : `http://localhost:3001${media.url}`}
+                  src={media.url.startsWith('http') ? media.url : `${import.meta.env.VITE_API_URL || (import.meta.env.MODE === 'production' ? '' : 'http://localhost:3001')}${media.url}`}
                   className="w-full h-full object-cover"
                   autoPlay
                   loop
