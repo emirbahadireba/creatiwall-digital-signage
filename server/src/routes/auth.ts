@@ -1,15 +1,15 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
-import db from '../db/database.js';
-import { 
-  generateToken, 
-  authenticate, 
-  trackLoginAttempts, 
+import db from '../db/database';
+import {
+  generateToken,
+  authenticate,
+  trackLoginAttempts,
   isAccountLocked,
   rateLimit,
-  AuthenticatedRequest 
-} from '../middleware/auth.js';
+  AuthenticatedRequest
+} from '../middleware/auth';
 
 const router = express.Router();
 

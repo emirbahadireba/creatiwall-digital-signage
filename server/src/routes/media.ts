@@ -4,8 +4,8 @@ import multer from 'multer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
-import db from '../db/database.js';
-import { authenticate, authorize, tenantIsolation } from '../middleware/auth.js';
+import db from '../db/database';
+import { authenticate, authorize, tenantIsolation } from '../middleware/auth';
 
 // FFmpeg import - optional
 let ffmpeg: any = null;
