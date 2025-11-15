@@ -219,7 +219,13 @@ export const useStore = create<StoreState>((set, get) => ({
     set(state => ({ loading: { ...state.loading, devices: true } }));
     try {
       const devices = await api.getDevices();
-      set({ devices: devices.map(d => ({ ...d, lastSeen: new Date(d.lastSeen) })) });
+      set({
+        devices: devices.map(d => ({
+          ...d,
+          id: d.id || '',
+          lastSeen: new Date(d.lastSeen || Date.now())
+        }))
+      });
     } catch (error: any) {
       toast.error('Cihazlar yüklenirken hata oluştu: ' + error.message);
     } finally {
@@ -231,7 +237,13 @@ export const useStore = create<StoreState>((set, get) => ({
     set(state => ({ loading: { ...state.loading, media: true } }));
     try {
       const mediaItems = await api.getMediaItems();
-      set({ mediaItems: mediaItems.map(m => ({ ...m, uploadDate: new Date(m.createdAt) })) });
+      set({
+        mediaItems: mediaItems.map(m => ({
+          ...m,
+          id: m.id || '',
+          uploadDate: new Date(m.createdAt || Date.now())
+        }))
+      });
     } catch (error: any) {
       toast.error('Medya öğeleri yüklenirken hata oluştu: ' + error.message);
     } finally {
@@ -242,46 +254,29 @@ export const useStore = create<StoreState>((set, get) => ({
   fetchLayouts: async (filters?: { category?: string; orientation?: string; search?: string }) => {
     set(state => ({ loading: { ...state.loading, layouts: true } }));
     try {
-      const params = new URLSearchParams();
-      if (filters?.category && filters.category !== 'all') params.append('category', filters.category);
-      if (filters?.orientation && filters.orientation !== 'all') params.append('orientation', filters.orientation);
-      if (filters?.search && filters.search.trim()) params.append('search', filters.search.trim());
+      console.log('Store - Fetching layouts with filters:', filters);
       
-      const url = `/api/layouts${params.toString() ? `?${params.toString()}` : ''}`;
-      console.log('Store - Fetching layouts from:', url);
+      // Use api service for consistency
+      const layouts = await api.getLayouts();
+      console.log('Store - Layouts fetched:', Array.isArray(layouts) ? layouts.length : 'not array', layouts);
       
-      const token = localStorage.getItem('auth_token');
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-      
-      const response = await fetch(url, { headers });
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Store - Layout fetch error:', response.status, errorText);
-        throw new Error(`Layout fetch failed: HTTP ${response.status} - ${errorText}`);
-      }
-      
-      const layouts = await response.json();
-      console.log('Store - Layouts fetched:', layouts.length);
+      // Ensure layouts is always an array
+      const layoutsArray = Array.isArray(layouts) ? layouts : [];
       
       // Ensure layouts have proper date objects and zone arrays
-      const processedLayouts = layouts.map((l: any) => ({
+      const processedLayouts = layoutsArray.map((l: any) => ({
         ...l,
-        createdAt: new Date(l.createdAt),
+        createdAt: new Date(l.createdAt || Date.now()),
         zones: Array.isArray(l.zones) ? l.zones : []
       }));
       
+      console.log('Store - Processed layouts:', processedLayouts.length);
       set({ layouts: processedLayouts });
       return processedLayouts;
     } catch (error: any) {
       console.error('Store - Layout fetch error:', error);
       toast.error('Layout\'lar yüklenirken hata oluştu: ' + error.message);
-      // Don't throw error, return empty array to prevent UI crashes
+      // Always ensure layouts is an array to prevent .map errors
       set({ layouts: [] });
       return [];
     } finally {
@@ -333,7 +328,13 @@ export const useStore = create<StoreState>((set, get) => ({
     set(state => ({ loading: { ...state.loading, playlists: true } }));
     try {
       const playlists = await api.getPlaylists();
-      set({ playlists: playlists.map(p => ({ ...p, createdAt: new Date(p.createdAt) })) });
+      set({
+        playlists: playlists.map(p => ({
+          ...p,
+          id: p.id || '',
+          createdAt: new Date(p.createdAt || Date.now())
+        }))
+      });
     } catch (error: any) {
       toast.error('Playlist\'ler yüklenirken hata oluştu: ' + error.message);
     } finally {
@@ -345,12 +346,13 @@ export const useStore = create<StoreState>((set, get) => ({
     set(state => ({ loading: { ...state.loading, schedules: true } }));
     try {
       const schedules = await api.getSchedules();
-      set({ 
-        schedules: schedules.map(s => ({ 
-          ...s, 
-          startDate: new Date(s.startDate),
-          endDate: new Date(s.endDate)
-        })) 
+      set({
+        schedules: schedules.map(s => ({
+          ...s,
+          id: s.id || '',
+          startDate: new Date(s.startDate || Date.now()),
+          endDate: new Date(s.endDate || Date.now())
+        }))
       });
     } catch (error: any) {
       toast.error('Zamanlamalar yüklenirken hata oluştu: ' + error.message);
@@ -373,7 +375,13 @@ export const useStore = create<StoreState>((set, get) => ({
   addDevice: async (device) => {
     try {
       const newDevice = await api.createDevice(device);
-      set(state => ({ devices: [...state.devices, { ...newDevice, lastSeen: new Date(newDevice.lastSeen) }] }));
+      set(state => ({
+        devices: [...state.devices, {
+          ...newDevice,
+          id: newDevice.id || '',
+          lastSeen: new Date(newDevice.lastSeen || Date.now())
+        }]
+      }));
       toast.success('Cihaz başarıyla eklendi!');
     } catch (error: any) {
       toast.error('Cihaz eklenirken hata oluştu: ' + error.message);
@@ -385,8 +393,12 @@ export const useStore = create<StoreState>((set, get) => ({
     try {
       const updated = await api.updateDevice(id, updates);
       set(state => ({
-        devices: state.devices.map(device => 
-          device.id === id ? { ...updated, lastSeen: new Date(updated.lastSeen) } : device
+        devices: state.devices.map(device =>
+          device.id === id ? {
+            ...updated,
+            id: updated.id || id,
+            lastSeen: new Date(updated.lastSeen || Date.now())
+          } : device
         )
       }));
       toast.success('Cihaz güncellendi!');
@@ -411,8 +423,12 @@ export const useStore = create<StoreState>((set, get) => ({
   addMediaItem: async (item) => {
     try {
       const newItem = await api.createMediaItem(item);
-      set(state => ({ 
-        mediaItems: [...state.mediaItems, { ...newItem, uploadDate: new Date(newItem.createdAt) }] 
+      set(state => ({
+        mediaItems: [...state.mediaItems, {
+          ...newItem,
+          id: newItem.id || '',
+          uploadDate: new Date(newItem.createdAt || Date.now())
+        }]
       }));
       toast.success('Medya öğesi eklendi!');
     } catch (error: any) {
@@ -425,7 +441,11 @@ export const useStore = create<StoreState>((set, get) => ({
     try {
       // Send thumbnail to backend for processing
       const newItem = await api.uploadMedia(file, data);
-      const itemWithDate = { ...newItem, uploadDate: new Date(newItem.createdAt) };
+      const itemWithDate = {
+        ...newItem,
+        id: newItem.id || '',
+        uploadDate: new Date(newItem.createdAt || Date.now())
+      };
       set(state => ({
         mediaItems: [...state.mediaItems, itemWithDate]
       }));
@@ -624,8 +644,12 @@ export const useStore = create<StoreState>((set, get) => ({
   addPlaylist: async (playlist) => {
     try {
       const newPlaylist = await api.createPlaylist(playlist);
-      set(state => ({ 
-        playlists: [...state.playlists, { ...newPlaylist, createdAt: new Date(newPlaylist.createdAt) }] 
+      set(state => ({
+        playlists: [...state.playlists, {
+          ...newPlaylist,
+          id: newPlaylist.id || '',
+          createdAt: new Date(newPlaylist.createdAt || Date.now())
+        }]
       }));
       toast.success('Playlist eklendi!');
     } catch (error: any) {
@@ -638,8 +662,12 @@ export const useStore = create<StoreState>((set, get) => ({
     try {
       const updated = await api.updatePlaylist(id, playlist);
       set(state => ({
-        playlists: state.playlists.map(p => 
-          p.id === id ? { ...updated, createdAt: new Date(updated.createdAt) } : p
+        playlists: state.playlists.map(p =>
+          p.id === id ? {
+            ...updated,
+            id: updated.id || id,
+            createdAt: new Date(updated.createdAt || Date.now())
+          } : p
         )
       }));
       toast.success('Playlist güncellendi!');
@@ -664,12 +692,13 @@ export const useStore = create<StoreState>((set, get) => ({
   addSchedule: async (schedule) => {
     try {
       const newSchedule = await api.createSchedule(schedule);
-      set(state => ({ 
-        schedules: [...state.schedules, { 
+      set(state => ({
+        schedules: [...state.schedules, {
           ...newSchedule,
-          startDate: new Date(newSchedule.startDate),
-          endDate: new Date(newSchedule.endDate)
-        }] 
+          id: newSchedule.id || '',
+          startDate: new Date(newSchedule.startDate || Date.now()),
+          endDate: new Date(newSchedule.endDate || Date.now())
+        }]
       }));
       toast.success('Zamanlama eklendi!');
     } catch (error: any) {
@@ -682,11 +711,12 @@ export const useStore = create<StoreState>((set, get) => ({
     try {
       const updated = await api.updateSchedule(id, updates);
       set(state => ({
-        schedules: state.schedules.map(schedule => 
-          schedule.id === id ? { 
+        schedules: state.schedules.map(schedule =>
+          schedule.id === id ? {
             ...updated,
-            startDate: new Date(updated.startDate),
-            endDate: new Date(updated.endDate)
+            id: updated.id || id,
+            startDate: new Date(updated.startDate || Date.now()),
+            endDate: new Date(updated.endDate || Date.now())
           } : schedule
         )
       }));
