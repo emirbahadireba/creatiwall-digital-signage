@@ -5,10 +5,6 @@ import { authenticate, authorize, tenantIsolation } from '../middleware/auth';
 
 const router = express.Router();
 
-// Apply authentication middleware to all routes
-router.use(authenticate);
-router.use(tenantIsolation);
-
 // Layout dimensions presets
 const LAYOUT_PRESETS = {
   'landscape-hd': { width: 1920, height: 1080, name: 'Landscape HD (1920x1080)' },
@@ -60,23 +56,39 @@ const generateLayoutThumbnail = async (layout: any) => {
   return null;
 };
 
-// Get layout presets
+// Get layout presets (public endpoint)
 router.get('/presets', (req, res) => {
   try {
-    res.json(LAYOUT_PRESETS);
+    res.json({
+      success: true,
+      data: LAYOUT_PRESETS
+    });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
 
-// Get layout categories
+// Get layout categories (public endpoint)
 router.get('/categories', (req, res) => {
   try {
-    res.json(LAYOUT_CATEGORIES);
+    res.json({
+      success: true,
+      data: LAYOUT_CATEGORIES
+    });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
   }
 });
+
+// Apply authentication middleware to protected routes
+router.use(authenticate);
+router.use(tenantIsolation);
 
 // Get all layouts with filtering
 router.get('/', (req, res) => {

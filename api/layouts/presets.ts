@@ -11,60 +11,20 @@ const LAYOUT_PRESETS = {
   'custom': { width: 1920, height: 1080, name: 'Custom' }
 };
 
-// Layout categories
-const LAYOUT_CATEGORIES = [
-  'fullscreen',
-  'split',
-  'grid',
-  'sidebar',
-  'creative',
-  'dashboard',
-  'ticker',
-  'custom'
-];
-
-// Simple in-memory database for demo
-let database = {
-  layouts: [] as any[]
-};
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
   
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
-  const { url } = req;
-  
-  // Handle /presets endpoint
-  if (url?.includes('/presets')) {
-    if (req.method === 'GET') {
-      return res.status(200).json({
-        success: true,
-        data: LAYOUT_PRESETS
-      });
-    }
-  }
-  
-  // Handle /categories endpoint
-  if (url?.includes('/categories')) {
-    if (req.method === 'GET') {
-      return res.status(200).json({
-        success: true,
-        data: LAYOUT_CATEGORIES
-      });
-    }
-  }
-
-  // Handle main layouts endpoint
   if (req.method === 'GET') {
     return res.status(200).json({
       success: true,
-      data: database.layouts
+      data: LAYOUT_PRESETS
     });
   }
 
