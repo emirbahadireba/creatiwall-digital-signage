@@ -1,103 +1,218 @@
-# CreatiWall - Digital Signage System
+# CreatiWall Digital Signage System
 
-Modern bir digital signage yönetim platformu.
+A modern digital signage management system built with React, TypeScript, and Node.js.
 
-## Özellikler
+## Features
 
-- 🖥️ **Cihaz Yönetimi**: Birden fazla ekranı merkezi olarak yönetin
-- 📁 **Medya Kütüphanesi**: Video, görsel ve diğer içerikleri yükleyin ve organize edin
-- 🎨 **Layout Tasarımcısı**: Görsel drag-and-drop ile ekran düzenleri oluşturun
-- 📋 **Playlist Yönetimi**: İçerikleri sıraya koyun ve döngüsel oynatın
-- ⏰ **Zamanlama**: Belirli saatlerde ve günlerde otomatik yayın planlayın
-- 📊 **Dashboard**: Sistem genel bakışı ve istatistikler
+- **Device Management**: Monitor and control digital signage displays
+- **Media Library**: Upload and organize images, videos, and other content
+- **Layout Designer**: Create custom layouts with drag-and-drop interface
+- **Playlist Management**: Schedule and organize content playlists
+- **Widget System**: Add interactive widgets like weather, RSS feeds, and clocks
+- **User Authentication**: Secure login and user management
+- **Real-time Updates**: Live content updates across all devices
 
-## Teknolojiler
+## Tech Stack
 
 ### Frontend
-- React 18 + TypeScript
-- Vite
-- Zustand (State Management)
-- Tailwind CSS
-- Framer Motion
-- React Router
+- React 18 with TypeScript
+- Vite for build tooling
+- Tailwind CSS for styling
+- Framer Motion for animations
+- Zustand for state management
+- React Router for navigation
 
 ### Backend
-- Node.js + Express
+- Node.js with Express
 - TypeScript
-- SQLite (better-sqlite3)
-- Multer (File Upload)
+- JWT authentication
+- Supabase PostgreSQL database
+- File upload handling
+- RESTful API design
 
-## Kurulum
+## Deployment
 
-### 1. Frontend Kurulumu
+### Vercel Deployment
+
+This project is configured for deployment on Vercel with the following setup:
+
+1. **Frontend**: Built with Vite and served as static files
+2. **Backend**: Deployed as Vercel serverless functions
+3. **Database**: Supabase PostgreSQL for production data
+
+#### Environment Variables for Vercel
+
+Set these environment variables in your Vercel dashboard:
 
 ```bash
-npm install
-npm run dev
+# Frontend
+VITE_API_URL=/api
+
+# Backend
+NODE_ENV=production
+JWT_SECRET=your-jwt-secret-here
+SUPABASE_URL=your-supabase-url
+SUPABASE_ANON_KEY=your-supabase-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-supabase-service-role-key
 ```
 
-Frontend http://localhost:5173 adresinde çalışacak.
+#### Deployment Steps
 
-### 2. Backend Kurulumu
+1. Connect your repository to Vercel
+2. Set the environment variables in Vercel dashboard
+3. Deploy - Vercel will automatically build and deploy both frontend and backend
 
+### Database Migration
+
+To migrate from local JSON database to Supabase:
+
+1. Set up a Supabase project
+2. Run the SQL schema from `supabase-schema.sql`
+3. Use the migration script: `npm run migrate:supabase`
+
+## Getting Started (Development)
+
+### Prerequisites
+- Node.js 18+ 
+- npm or yarn
+
+### Installation
+
+1. Clone the repository:
 ```bash
+git clone <repository-url>
+cd creatiwall-digital-signage
+```
+
+2. Install dependencies:
+```bash
+# Install root dependencies
+npm install
+
+# Install server dependencies
 cd server
 npm install
-npm run dev
+cd ..
 ```
 
-Backend http://localhost:3001 adresinde çalışacak.
+3. Set up environment variables:
+```bash
+# Copy example environment files
+cp .env.example .env
+cp server/.env.example server/.env
+```
+
+4. Configure your environment variables in the `.env` files.
+
+### Development
+
+Start both frontend and backend in development mode:
+```bash
+npm run dev:all
+```
+
+Or start them separately:
+```bash
+# Frontend (runs on http://localhost:5173)
+npm run dev
+
+# Backend (runs on http://localhost:3001)
+npm run dev:backend
+```
+
+### Building for Production
+
+```bash
+# Build both frontend and backend
+npm run build
+
+# Or build separately
+npm run build:frontend
+npm run build:backend
+```
+
+## Project Structure
+
+```
+├── src/                    # Frontend source code
+│   ├── components/         # React components
+│   ├── contexts/          # React contexts
+│   ├── services/          # API services
+│   ├── store/             # State management
+│   ├── types/             # TypeScript type definitions
+│   └── utils/             # Utility functions
+├── server/                # Backend source code
+│   ├── src/
+│   │   ├── routes/        # API routes
+│   │   ├── middleware/    # Express middleware
+│   │   └── db/           # Database utilities
+│   ├── data/             # Database files (development)
+│   └── uploads/          # Uploaded media files
+├── public/               # Static assets
+│   └── widgets/          # Widget HTML files
+├── dist/                 # Built frontend files
+├── vercel.json           # Vercel deployment configuration
+└── supabase-schema.sql   # Production database schema
+```
 
 ## API Endpoints
 
+### Authentication
+- `POST /api/auth/register` - User registration
+- `POST /api/auth/login` - User login
+- `POST /api/auth/logout` - User logout
+- `GET /api/auth/me` - Get current user
+
 ### Devices
-- `GET /api/devices` - Tüm cihazları listele
-- `POST /api/devices` - Yeni cihaz ekle
-- `PUT /api/devices/:id` - Cihaz güncelle
-- `DELETE /api/devices/:id` - Cihaz sil
+- `GET /api/devices` - List all devices
+- `POST /api/devices` - Create new device
+- `GET /api/devices/:id` - Get device by ID
+- `PUT /api/devices/:id` - Update device
+- `DELETE /api/devices/:id` - Delete device
 
 ### Media
-- `GET /api/media` - Tüm medya öğelerini listele
-- `POST /api/media/upload` - Dosya yükle
-- `POST /api/media` - URL ile medya ekle
-- `PUT /api/media/:id` - Medya güncelle
-- `DELETE /api/media/:id` - Medya sil
+- `GET /api/media` - List all media items
+- `POST /api/media/upload` - Upload media file
+- `GET /api/media/:id` - Get media item by ID
+- `PUT /api/media/:id` - Update media item
+- `DELETE /api/media/:id` - Delete media item
 
 ### Layouts
-- `GET /api/layouts` - Tüm layout'ları listele
-- `POST /api/layouts` - Yeni layout oluştur
-- `PUT /api/layouts/:id` - Layout güncelle
-- `DELETE /api/layouts/:id` - Layout sil
+- `GET /api/layouts` - List all layouts
+- `POST /api/layouts` - Create new layout
+- `GET /api/layouts/:id` - Get layout by ID
+- `PUT /api/layouts/:id` - Update layout
+- `DELETE /api/layouts/:id` - Delete layout
 
 ### Playlists
-- `GET /api/playlists` - Tüm playlist'leri listele
-- `POST /api/playlists` - Yeni playlist oluştur
-- `PUT /api/playlists/:id` - Playlist güncelle
-- `DELETE /api/playlists/:id` - Playlist sil
+- `GET /api/playlists` - List all playlists
+- `POST /api/playlists` - Create new playlist
+- `GET /api/playlists/:id` - Get playlist by ID
+- `PUT /api/playlists/:id` - Update playlist
+- `DELETE /api/playlists/:id` - Delete playlist
 
 ### Schedules
-- `GET /api/schedules` - Tüm zamanlamaları listele
-- `POST /api/schedules` - Yeni zamanlama oluştur
-- `PUT /api/schedules/:id` - Zamanlama güncelle
-- `DELETE /api/schedules/:id` - Zamanlama sil
+- `GET /api/schedules` - List all schedules
+- `POST /api/schedules` - Create new schedule
+- `GET /api/schedules/:id` - Get schedule by ID
+- `PUT /api/schedules/:id` - Update schedule
+- `DELETE /api/schedules/:id` - Delete schedule
 
-## Veritabanı
+### Widgets
+- `GET /api/widgets/templates` - List widget templates
+- `GET /api/widgets/instances` - List widget instances
+- `POST /api/widgets/instances` - Create widget instance
+- `PUT /api/widgets/instances/:id` - Update widget instance
+- `DELETE /api/widgets/instances/:id` - Delete widget instance
 
-SQLite veritabanı otomatik olarak `server/data/creatiwall.db` konumunda oluşturulur.
+## Contributing
 
-## Dosya Yükleme
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
 
-Yüklenen dosyalar `server/uploads/` klasöründe saklanır ve `/uploads/` endpoint'i üzerinden erişilebilir.
+## License
 
-## Geliştirme
-
-```bash
-# Frontend ve backend'i ayrı terminalerde çalıştırın
-npm run dev        # Frontend
-cd server && npm run dev  # Backend
-```
-
-## Lisans
-
-Private - All rights reserved
-
+This project is licensed under the MIT License.

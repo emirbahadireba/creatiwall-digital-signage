@@ -40,7 +40,9 @@ app.use((req, res, next) => {
 // CORS configuration
 const corsOrigins = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(',')
-  : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000'];
+  : NODE_ENV === 'production'
+    ? true // Allow all origins in production for Vercel
+    : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000'];
 
 app.use(cors({
   origin: corsOrigins,
@@ -127,11 +129,16 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`🌍 Environment: ${NODE_ENV}`);
-  console.log(`📊 Database initialized`);
-  console.log(`🔒 CORS origins: ${corsOrigins.join(', ')}`);
-});
+// For Vercel serverless functions
+export default app;
+
+// Start server (only in development)
+if (NODE_ENV === 'development') {
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on http://localhost:${PORT}`);
+    console.log(`🌍 Environment: ${NODE_ENV}`);
+    console.log(`📊 Database initialized`);
+    console.log(`🔒 CORS origins: ${Array.isArray(corsOrigins) ? corsOrigins.join(', ') : 'All origins allowed'}`);
+  });
+}
 
