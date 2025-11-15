@@ -44,7 +44,14 @@ class ApiService {
       throw new Error(error.error || `HTTP error! status: ${response.status}`);
     }
 
-    return response.json();
+    const result = await response.json();
+    
+    // If the response has a 'data' property, return that instead of the whole response
+    if (result && typeof result === 'object' && 'data' in result) {
+      return result.data as T;
+    }
+    
+    return result;
   }
 
   // Authentication
