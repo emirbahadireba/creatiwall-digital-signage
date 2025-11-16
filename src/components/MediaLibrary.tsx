@@ -12,6 +12,9 @@ const MediaLibrary = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [videoThumbnails, setVideoThumbnails] = useState<Record<string, string>>({});
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState('');
 
   const filteredMedia = mediaItems.filter(item => {
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -37,6 +40,11 @@ const MediaLibrary = () => {
 
   const handleUpload = async (file: File, mediaData: { name?: string; type?: string; category?: string; tags?: string[] }) => {
     console.log('handleUpload called with:', { fileName: file.name, type: mediaData.type, fileType: file.type, size: file.size });
+    
+    setIsUploading(true);
+    setUploadProgress(0);
+    setUploadStatus('Dosya hazırlanıyor...');
+    
     try {
       // Generate thumbnail for videos in frontend (no FFmpeg needed on server)
       let thumbnail: string | null = null;
@@ -47,6 +55,9 @@ const MediaLibrary = () => {
       
       if (isVideo) {
         console.log('Video detected, starting thumbnail generation...');
+        setUploadProgress(20);
+        setUploadStatus('Video thumbnail oluşturuluyor...');
+        
         try {
           console.log('Starting thumbnail generation for video:', file.name);
           toast.loading('Video thumbnail oluşturuluyor...', { id: 'thumbnail' });
@@ -76,11 +87,17 @@ const MediaLibrary = () => {
 
       console.log('Uploading file with thumbnail:', thumbnail ? 'Yes' : 'No');
       
+      setUploadProgress(60);
+      setUploadStatus('Dosya sunucuya yükleniyor...');
+      
       // Upload file with thumbnail
       const newItem = await uploadMediaFile(file, {
         ...mediaData,
         ...(thumbnail && { thumbnail })
       });
+      
+      setUploadProgress(90);
+      setUploadStatus('Upload tamamlanıyor...');
       
       // Store thumbnail in frontend state if generated
       if (thumbnail && newItem?.id) {
