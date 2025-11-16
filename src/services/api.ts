@@ -118,17 +118,30 @@ class ApiService {
   }
 
   async uploadMedia(file: File, data: { name?: string; type?: string; category?: string; tags?: string[]; thumbnail?: string }) {
-    const formData = new FormData();
-    formData.append('file', file);
-    if (data.name) formData.append('name', data.name);
-    if (data.type) formData.append('type', data.type);
-    if (data.category) formData.append('category', data.category);
-    if (data.tags && data.tags.length > 0) formData.append('tags', JSON.stringify(data.tags));
-    if (data.thumbnail) formData.append('thumbnail', data.thumbnail);
-
     try {
+      // Convert file to base64
+      const fileData = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const payload = {
+        fileData,
+        fileName: file.name,
+        fileType: file.type,
+        name: data.name,
+        type: data.type,
+        category: data.category,
+        tags: data.tags,
+        thumbnail: data.thumbnail
+      };
+
       const token = localStorage.getItem('auth_token');
-      const headers: Record<string, string> = {};
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
       
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
@@ -137,8 +150,7 @@ class ApiService {
       const response = await fetch(`${API_BASE_URL}/media/upload`, {
         method: 'POST',
         headers,
-        body: formData,
-        // Don't set Content-Type header - browser will set it automatically with boundary for FormData
+        body: JSON.stringify(payload)
       });
 
       if (!response.ok) {
@@ -146,7 +158,14 @@ class ApiService {
         throw new Error(error.error || `HTTP error! status: ${response.status}`);
       }
 
-      return response.json();
+      const result = await response.json();
+      
+      // If the response has a 'data' property, return that instead of the whole response
+      if (result && typeof result === 'object' && 'data' in result) {
+        return result.data;
+      }
+      
+      return result;
     } catch (error: unknown) {
       // Network error or fetch failed
       if (error instanceof Error && error.name === 'TypeError' && error.message.includes('fetch')) {
