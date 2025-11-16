@@ -22,8 +22,11 @@ class SupabaseDatabase implements DatabaseInterface {
   private supabase: any;
 
   constructor() {
-    const supabaseUrl = process.env.SUPABASE_URL!;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    const supabaseUrl = process.env.SUPABASE_URL || 'https://jlrsklomfbfoogaekfyd.supabase.co';
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpscnNrbG9tZmJmb29nYWVrZnlkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MzE0NTI3NSwiZXhwIjoyMDc4NzIxMjc1fQ.ugrz_KRYflk6uGPz3-uD0dIXeNJFiC4xurjyViLf8KE';
+    
+    console.log('🔧 SupabaseDatabase constructor - URL:', supabaseUrl);
+    console.log('🔧 SupabaseDatabase constructor - Key:', supabaseServiceKey ? 'SET' : 'NOT SET');
     
     this.supabase = createClient(supabaseUrl, supabaseServiceKey, {
       auth: {
@@ -213,22 +216,15 @@ class JsonDatabase implements DatabaseInterface {
 
 // Factory function to create the appropriate database instance
 function createDatabase(): DatabaseInterface {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  // HARDCODED SUPABASE CREDENTIALS - TEMPORARY FIX
+  const supabaseUrl = process.env.SUPABASE_URL || 'https://jlrsklomfbfoogaekfyd.supabase.co';
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpscnNrbG9tZmJmb29nYWVrZnlkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MzE0NTI3NSwiZXhwIjoyMDc4NzIxMjc1fQ.ugrz_KRYflk6uGPz3-uD0dIXeNJFiC4xurjyViLf8KE';
 
-  console.log('🔍 Environment Variables Debug:');
-  console.log('SUPABASE_URL:', supabaseUrl ? 'SET' : 'NOT SET');
-  console.log('SUPABASE_SERVICE_ROLE_KEY:', supabaseServiceKey ? 'SET' : 'NOT SET');
-  console.log('All env vars:', Object.keys(process.env).filter(key => key.includes('SUPABASE')));
-
-  if (supabaseUrl && supabaseServiceKey) {
-    console.log('🚀 Using Supabase PostgreSQL database for registration');
-    return new SupabaseDatabase();
-  } else {
-    console.log('📁 Using JSON file database (fallback) for registration');
-    console.log('❌ REASON: Missing environment variables');
-    return new JsonDatabase();
-  }
+  console.log('🚀 FORCING Supabase PostgreSQL database for registration');
+  console.log('URL:', supabaseUrl);
+  console.log('Key:', supabaseServiceKey ? 'SET' : 'NOT SET');
+  
+  return new SupabaseDatabase();
 }
 
 // Type definitions
