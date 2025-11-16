@@ -1,37 +1,16 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 
-// Hardcoded Supabase credentials (same as other endpoints)
+// Hardcoded Supabase credentials
 const supabaseUrl = 'https://ixqkqvhqfbpjpibhlqtb.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml4cWtxdmhxZmJwanBpYmhscXRiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzE3MjU5NzEsImV4cCI6MjA0NzMwMTk3MX0.YCOkdOJNHS8tJoqeGBYyJlBxKOqaQkGOQKJmrOQKqhI';
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Field conversion helpers
-function convertToSnakeCase(obj: any): any {
-  if (!obj || typeof obj !== 'object') return obj;
-  
-  const converted: any = {};
-  for (const [key, value] of Object.entries(obj)) {
-    const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-    converted[snakeKey] = value;
-  }
-  return converted;
-}
-
-function convertToCamelCase(obj: any): any {
-  if (!obj || typeof obj !== 'object') return obj;
-  
-  const converted: any = {};
-  for (const [key, value] of Object.entries(obj)) {
-    const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
-    converted[camelKey] = value;
-  }
-  return converted;
-}
-
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  console.log('📤 Media Upload API called:', req.method);
+  console.log('🚀 Media Upload API - Start');
+  console.log('Method:', req.method);
+  console.log('Headers:', JSON.stringify(req.headers, null, 2));
   
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -39,10 +18,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
   
   if (req.method === 'OPTIONS') {
+    console.log('✅ OPTIONS request handled');
     return res.status(200).end();
   }
 
   if (req.method !== 'POST') {
+    console.log('❌ Method not allowed:', req.method);
     return res.status(405).json({
       success: false,
       message: 'Method not allowed'
@@ -50,50 +31,55 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // Parse request body if it's a string (Vercel issue)
-    let body = req.body;
+    console.log('📦 Raw body type:', typeof req.body);
+    console.log('📦 Raw body:', req.body ? 'exists' : 'null/undefined');
+    
+    // Handle different body formats
+    let body;
     if (typeof req.body === 'string') {
+      console.log('🔄 Parsing string body...');
       try {
         body = JSON.parse(req.body);
+        console.log('✅ String body parsed successfully');
       } catch (parseError) {
         console.error('❌ JSON parse error:', parseError);
         return res.status(400).json({
           success: false,
-          message: 'Invalid JSON in request body'
+          message: 'Invalid JSON format'
         });
       }
-    }
-
-    // Check if body exists
-    if (!body) {
-      console.error('❌ Request body is undefined');
+    } else if (req.body && typeof req.body === 'object') {
+      console.log('✅ Object body received');
+      body = req.body;
+    } else {
+      console.error('❌ No body received');
       return res.status(400).json({
         success: false,
         message: 'Request body is missing'
       });
     }
 
-    console.log('📦 Request body received:', {
-      hasFileData: !!body.fileData,
-      fileName: body.fileName,
-      fileType: body.fileType,
-      bodyKeys: Object.keys(body || {})
-    });
-
+    console.log('📋 Body keys:', Object.keys(body || {}));
+    
     const { fileData, fileName, fileType, name, type, category, tags, thumbnail } = body;
     
     if (!fileData || !fileName) {
-      console.error('❌ Missing required fields:', { hasFileData: !!fileData, fileName });
+      console.error('❌ Missing required fields:', { 
+        hasFileData: !!fileData, 
+        fileName: fileName || 'missing' 
+      });
       return res.status(400).json({
         success: false,
         message: 'File data and name are required'
       });
     }
 
-    console.log('📁 File received:', {
-      name: fileName,
-      type: fileType,
-      dataLength: fileData.length
+    console.log('📁 File info:', {
+      fileName,
+      fileType,
+      dataLength: fileData.length,
+      hasName: !!name,
+      hasType: !!type
     });
 
     // Generate unique filename
@@ -102,13 +88,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const fileExtension = fileName.split('.').pop() || 'bin';
     const uniqueFileName = `${timestamp}-${randomId}.${fileExtension}`;
     
-    console.log('📤 Uploading to Supabase Storage:', uniqueFileName);
+    console.log('🔄 Generated filename:', uniqueFileName);
 
     // Convert base64 to buffer
     const base64Data = fileData.replace(/^data:[^;]+;base64,/, '');
     const fileBuffer = Buffer.from(base64Data, 'base64');
     
-    // Upload to Supabase Storage (PUBLIC bucket for layout/player access)
+    console.log('📊 Buffer info:', {
+      originalLength: fileData.length,
+      base64Length: base64Data.length,
+      bufferLength: fileBuffer.length
+    });
+
+    // Test Supabase connection first
+    console.log('🔗 Testing Supabase connection...');
+    try {
+      const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
+      if (bucketsError) {
+        console.error('❌ Supabase connection error:', bucketsError);
+        throw new Error(`Supabase connection failed: ${bucketsError.message}`);
+      }
+      console.log('✅ Supabase connected, buckets:', buckets?.map(b => b.name));
+      
+      const mediaFilesBucket = buckets?.find(b => b.name === 'media-files');
+      if (!mediaFilesBucket) {
+        console.error('❌ media-files bucket not found');
+        throw new Error('media-files bucket not found');
+      }
+      console.log('✅ media-files bucket found');
+    } catch (connectionError) {
+      console.error('❌ Supabase connection test failed:', connectionError);
+      throw connectionError;
+    }
+    
+    // Upload to Supabase Storage
+    console.log('📤 Uploading to Supabase Storage...');
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('media-files')
       .upload(uniqueFileName, fileBuffer, {
@@ -123,7 +137,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     console.log('✅ File uploaded to Supabase Storage:', uploadData.path);
 
-    // Get public URL (for layout/player access)
+    // Get public URL
     const { data: urlData } = supabase.storage
       .from('media-files')
       .getPublicUrl(uniqueFileName);
@@ -131,74 +145,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const publicUrl = urlData.publicUrl;
     console.log('🔗 Public URL generated:', publicUrl);
 
-    // Handle thumbnail upload if provided
-    let thumbnailUrl = null;
-    if (thumbnail && thumbnail.startsWith('data:image/')) {
-      try {
-        console.log('📸 Uploading thumbnail to Supabase Storage...');
-        
-        // Convert base64 to buffer
-        const base64Data = thumbnail.replace(/^data:image\/\w+;base64,/, '');
-        const thumbnailBuffer = Buffer.from(base64Data, 'base64');
-        
-        const thumbnailFileName = `${timestamp}-${randomId}_thumb.jpg`;
-        
-        const { data: thumbUploadData, error: thumbUploadError } = await supabase.storage
-          .from('media-files')
-          .upload(thumbnailFileName, thumbnailBuffer, {
-            contentType: 'image/jpeg',
-            upsert: false
-          });
-
-        if (thumbUploadError) {
-          console.error('❌ Thumbnail upload error:', thumbUploadError);
-        } else {
-          // Get public URL for thumbnail
-          const { data: thumbUrlData } = supabase.storage
-            .from('media-files')
-            .getPublicUrl(thumbnailFileName);
-          
-          thumbnailUrl = thumbUrlData.publicUrl;
-          console.log('✅ Thumbnail uploaded with public URL:', thumbnailUrl);
-        }
-      } catch (thumbError) {
-        console.error('❌ Thumbnail processing error:', thumbError);
-        // Continue without thumbnail
-      }
-    }
-
-    // Save media item to database with tenant_id for security
-    const mediaData = convertToSnakeCase({
+    // Save to database
+    const mediaRecord = {
       name: name || fileName,
-      type,
+      type: type || 'image',
       size: fileBuffer.length,
-      url: publicUrl, // Use public URL for layout/player access
-      category,
-      tags,
-      thumbnail: thumbnailUrl,
-      tenantId: 1, // TODO: Get from authenticated user's tenant
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    });
+      url: publicUrl,
+      category: category || 'uncategorized',
+      tags: tags || [],
+      thumbnail: thumbnail || null,
+      tenant_id: 1, // TODO: Get from authenticated user
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
 
-    console.log('💾 Saving media item to database:', mediaData);
+    console.log('💾 Saving to database:', mediaRecord);
 
     const { data: dbData, error: dbError } = await supabase
       .from('media_items')
-      .insert([mediaData])
+      .insert([mediaRecord])
       .select()
       .single();
 
     if (dbError) {
       console.error('❌ Database insert error:', dbError);
       
-      // Try to clean up uploaded file
+      // Clean up uploaded file
       try {
         await supabase.storage.from('media-files').remove([uniqueFileName]);
-        if (thumbnailUrl) {
-          const thumbnailFileName = `${timestamp}-${randomId}_thumb.jpg`;
-          await supabase.storage.from('media-files').remove([thumbnailFileName]);
-        }
+        console.log('🧹 Cleaned up uploaded file');
       } catch (cleanupError) {
         console.error('❌ Cleanup error:', cleanupError);
       }
@@ -206,10 +181,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       throw new Error(`Database insert failed: ${dbError.message}`);
     }
 
-    console.log('✅ Media item saved to database:', dbData);
+    console.log('✅ Media item saved to database:', dbData.id);
 
-    // Convert back to camelCase for response
-    const responseData = convertToCamelCase(dbData);
+    // Convert snake_case to camelCase for response
+    const responseData = {
+      id: dbData.id,
+      name: dbData.name,
+      type: dbData.type,
+      size: dbData.size,
+      url: dbData.url,
+      category: dbData.category,
+      tags: dbData.tags,
+      thumbnail: dbData.thumbnail,
+      tenantId: dbData.tenant_id,
+      createdAt: dbData.created_at,
+      updatedAt: dbData.updated_at
+    };
+
+    console.log('🎉 Upload completed successfully!');
 
     return res.status(201).json({
       success: true,
@@ -219,6 +208,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   } catch (error) {
     console.error('💥 Media upload error:', error);
+    console.error('Error stack:', error instanceof Error ? error.stack : 'No stack trace');
+    
     return res.status(500).json({
       success: false,
       message: 'File upload failed',
