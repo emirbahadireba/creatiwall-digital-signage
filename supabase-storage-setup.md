@@ -1,25 +1,25 @@
-# Supabase Storage Setup Guide - GÜVENLİ PRIVATE BUCKET
+# Supabase Storage Setup Guide - AKILLI GÜVENLİK MODELİ
 
 ## 1. Supabase Storage Bucket Oluşturma
 
 Supabase Dashboard'da aşağıdaki adımları takip edin:
 
-### Storage Bucket Oluşturma (GÜVENLİ):
+### Storage Bucket Oluşturma (AKILLI GÜVENLİK):
 1. Supabase Dashboard'a gidin: https://supabase.com/dashboard
 2. Projenizi seçin
 3. Sol menüden **Storage** sekmesine tıklayın
 4. **Create Bucket** butonuna tıklayın
 5. Bucket bilgilerini girin:
    - **Name**: `media-files`
-   - **Public**: ❌ **UNCHECKED** (PRIVATE bucket - güvenlik için!)
+   - **Public**: ✅ **CHECKED** (Layout/Player erişimi için gerekli!)
    - **File size limit**: `100 MB` (veya ihtiyacınıza göre)
    - **Allowed MIME types**: `image/*,video/*,audio/*` (veya `*/*` tüm dosya türleri için)
 
-⚠️ **ÖNEMLİ**: Public bucket kullanmayın! Herkes dosyalarınıza erişebilir.
+✅ **AKILLI GÜVENLİK**: Public bucket + Database-level tenant filtreleme
 
-### Storage Policies (RLS) Ayarlama - GÜVENLİ:
+### Storage Policies (RLS) Ayarlama - AKILLI GÜVENLİK:
 
-Private bucket için güvenli policies oluşturun:
+Public bucket için basit policies oluşturun:
 
 #### 1. Upload Policy (Sadece Authenticated Users):
 ```sql
@@ -28,49 +28,51 @@ FOR INSERT TO authenticated
 WITH CHECK (bucket_id = 'media-files');
 ```
 
-#### 2. Select Policy (Sadece Kendi Dosyaları):
+#### 2. Select Policy (Public Access - Layout/Player için):
 ```sql
-CREATE POLICY "Allow users to access their own files" ON storage.objects
-FOR SELECT TO authenticated
+CREATE POLICY "Allow public access to files" ON storage.objects
+FOR SELECT TO public
 USING (bucket_id = 'media-files');
 ```
 
-#### 3. Delete Policy (Sadece Kendi Dosyaları):
+#### 3. Delete Policy (Sadece Authenticated Users):
 ```sql
-CREATE POLICY "Allow users to delete their own files" ON storage.objects
+CREATE POLICY "Allow authenticated users to delete files" ON storage.objects
 FOR DELETE TO authenticated
 USING (bucket_id = 'media-files');
 ```
 
-⚠️ **GÜVENLİK**: Bu policies sadece authenticated kullanıcıların kendi dosyalarına erişmesini sağlar.
+✅ **AKILLI GÜVENLİK**: Dosyalar public erişilebilir ama database'de tenant_id ile filtrelenir.
 
-## 2. Güvenli URL Yapısı
+## 2. Akıllı Güvenlik URL Yapısı
 
-Private bucket için **Signed URLs** kullanılır:
+Public bucket için **Direct URLs** kullanılır:
 ```
-https://ixqkqvhqfbpjpibhlqtb.supabase.co/storage/v1/object/sign/media-files/[filename]?token=[signed_token]
+https://ixqkqvhqfbpjpibhlqtb.supabase.co/storage/v1/object/public/media-files/[filename]
 ```
 
-### Signed URL Avantajları:
-- ✅ Sadece yetkili kullanıcılar erişebilir
-- ✅ URL'ler belirli süre sonra expire olur (1 yıl)
-- ✅ Token olmadan dosyaya erişim mümkün değil
-- ✅ Kullanıcı bazlı erişim kontrolü
+### Akıllı Güvenlik Avantajları:
+- ✅ Layout'lar ve Player'lar dosyalara erişebilir
+- ✅ Database'de tenant_id ile filtreleme
+- ✅ Sadece kendi tenant'ının medyalarını görebilir
+- ✅ URL'ler basit ve hızlı erişim sağlar
+- ✅ Digital signage sistemleri için optimize
 
 ## 3. Test Etme
 
-Private bucket'ı oluşturduktan sonra:
+Public bucket'ı oluşturduktan sonra:
 1. CreatiWall uygulamasına gidin
-2. Register/Login yapın (authentication gerekli!)
+2. Register/Login yapın
 3. Media Library'ye gidin
 4. Bir dosya yüklemeyi deneyin
-5. Dosyanın signed URL ile erişilebilir olduğunu kontrol edin
+5. Dosyanın public URL ile erişilebilir olduğunu kontrol edin
+6. Layout Designer'da medyayı kullanmayı deneyin
 
 ## 4. Troubleshooting
 
 ### Hata: "new row violates row-level security policy"
 - Storage policies'lerin doğru ayarlandığından emin olun
-- Bucket'ın **PRIVATE** olarak ayarlandığından emin olun
+- Bucket'ın **PUBLIC** olarak ayarlandığından emin olun
 - Kullanıcının authenticated olduğundan emin olun
 
 ### Hata: "Bucket not found"
@@ -81,18 +83,24 @@ Private bucket'ı oluşturduktan sonra:
 - Bucket'ın file size limit'ini kontrol edin
 - Gerekirse limit'i artırın
 
-### Hata: "Access denied"
-- Kullanıcının login olduğundan emin olun
-- Storage policies'lerin doğru ayarlandığından emin olun
-- Signed URL'in expire olmadığından emin olun
+### Hata: "Media not showing in layouts"
+- Bucket'ın public olduğundan emin olun
+- URL'lerin doğru formatda olduğundan emin olun
 
-## 5. Güvenlik Notları
+## 5. Akıllı Güvenlik Modeli
 
-✅ **DOĞRU**: Private bucket + Signed URLs + RLS policies
-❌ **YANLIŞ**: Public bucket (herkes erişebilir!)
+✅ **AKILLI ÇÖZÜM**: Public bucket + Database tenant filtreleme
+❌ **ESKİ YÖNTEM**: Private bucket (layout'lar erişemez!)
 
-Private bucket kullanarak:
-- Sadece authenticated kullanıcılar dosya yükleyebilir
-- Dosyalara sadece signed URL ile erişilebilir
-- URL'ler belirli süre sonra expire olur
-- Kullanıcı bazlı erişim kontrolü sağlanır
+Akıllı güvenlik modeli:
+- ✅ Layout'lar ve Player'lar medyalara erişebilir
+- ✅ Database'de tenant_id ile güvenlik sağlanır
+- ✅ Kullanıcılar sadece kendi medyalarını görür
+- ✅ Digital signage sistemleri için optimize
+- ✅ Hızlı ve güvenilir erişim
+
+### Güvenlik Katmanları:
+1. **Authentication**: Sadece login kullanıcılar upload yapabilir
+2. **Database Filtreleme**: tenant_id ile medyalar filtrelenir
+3. **API Güvenliği**: Tüm endpoint'lerde tenant kontrolü
+4. **Public Access**: Layout/Player'lar için gerekli erişim

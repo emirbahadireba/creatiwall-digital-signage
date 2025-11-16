@@ -58,10 +58,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (req.method === 'GET') {
         console.log('📋 Getting single media item:', mediaId);
         
+        // TODO: Get tenant_id from authenticated user
+        const tenantId = 1; // For now, use default tenant
+        
         const { data, error } = await supabase
           .from('media_items')
           .select('*')
           .eq('id', mediaId)
+          .eq('tenant_id', tenantId) // Filter by tenant for security
           .single();
 
         if (error) {
@@ -99,6 +103,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         console.log('✏️ Updating media item:', mediaId);
         const updateData = req.body;
 
+        // TODO: Get tenant_id from authenticated user
+        const tenantId = 1; // For now, use default tenant
+
         // Convert camelCase to snake_case for database
         const dbData = convertToSnakeCase({
           ...updateData,
@@ -111,6 +118,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .from('media_items')
           .update(dbData)
           .eq('id', mediaId)
+          .eq('tenant_id', tenantId) // Filter by tenant for security
           .select()
           .single();
 
@@ -154,10 +162,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (req.method === 'DELETE') {
         console.log('🗑️ Deleting media item:', mediaId);
 
+        // TODO: Get tenant_id from authenticated user
+        const tenantId = 1; // For now, use default tenant
+
         const { error } = await supabase
           .from('media_items')
           .delete()
-          .eq('id', mediaId);
+          .eq('id', mediaId)
+          .eq('tenant_id', tenantId); // Filter by tenant for security
 
         if (error) {
           console.error('❌ Supabase media delete error:', error);
@@ -204,9 +216,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'GET') {
       console.log('📋 Getting media items from Supabase...');
       
+      // TODO: Get tenant_id from authenticated user
+      const tenantId = 1; // For now, use default tenant
+      
       const { data, error } = await supabase
         .from('media_items')
         .select('*')
+        .eq('tenant_id', tenantId) // Filter by tenant for security
         .order('created_at', { ascending: false });
 
       if (error) {

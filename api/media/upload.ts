@@ -79,7 +79,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const base64Data = fileData.replace(/^data:[^;]+;base64,/, '');
     const fileBuffer = Buffer.from(base64Data, 'base64');
     
-    // Upload to Supabase Storage (PRIVATE bucket for security)
+    // Upload to Supabase Storage (PUBLIC bucket for layout/player access)
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('media-files')
       .upload(uniqueFileName, fileBuffer, {
@@ -94,18 +94,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     console.log('✅ File uploaded to Supabase Storage:', uploadData.path);
 
-    // Generate signed URL for private access (expires in 1 year)
-    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+    // Get public URL (for layout/player access)
+    const { data: urlData } = supabase.storage
       .from('media-files')
-      .createSignedUrl(uniqueFileName, 31536000); // 1 year = 365 * 24 * 60 * 60
+      .getPublicUrl(uniqueFileName);
 
-    if (signedUrlError) {
-      console.error('❌ Signed URL generation error:', signedUrlError);
-      throw new Error(`Signed URL generation failed: ${signedUrlError.message}`);
-    }
-
-    const signedUrl = signedUrlData.signedUrl;
-    console.log('🔗 Signed URL generated:', signedUrl);
+    const publicUrl = urlData.publicUrl;
+    console.log('🔗 Public URL generated:', publicUrl);
 
     // Handle thumbnail upload if provided
     let thumbnailUrl = null;
@@ -129,17 +124,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (thumbUploadError) {
           console.error('❌ Thumbnail upload error:', thumbUploadError);
         } else {
-          // Generate signed URL for thumbnail (expires in 1 year)
-          const { data: thumbSignedUrlData, error: thumbSignedUrlError } = await supabase.storage
+          // Get public URL for thumbnail
+          const { data: thumbUrlData } = supabase.storage
             .from('media-files')
-            .createSignedUrl(thumbnailFileName, 31536000);
+            .getPublicUrl(thumbnailFileName);
           
-          if (thumbSignedUrlError) {
-            console.error('❌ Thumbnail signed URL error:', thumbSignedUrlError);
-          } else {
-            thumbnailUrl = thumbSignedUrlData.signedUrl;
-            console.log('✅ Thumbnail uploaded with signed URL:', thumbnailUrl);
-          }
+          thumbnailUrl = thumbUrlData.publicUrl;
+          console.log('✅ Thumbnail uploaded with public URL:', thumbnailUrl);
         }
       } catch (thumbError) {
         console.error('❌ Thumbnail processing error:', thumbError);
@@ -147,15 +138,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // Save media item to database
+    // Save media item to database with tenant_id for security
     const mediaData = convertToSnakeCase({
       name: name || fileName,
       type,
       size: fileBuffer.length,
-      url: signedUrl, // Use signed URL instead of public URL
+      url: publicUrl, // Use public URL for layout/player access
       category,
       tags,
       thumbnail: thumbnailUrl,
+      tenantId: 1, // TODO: Get from authenticated user's tenant
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     });
