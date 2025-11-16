@@ -216,11 +216,17 @@ function createDatabase(): DatabaseInterface {
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
+  console.log('🔍 Environment Variables Debug:');
+  console.log('SUPABASE_URL:', supabaseUrl ? 'SET' : 'NOT SET');
+  console.log('SUPABASE_SERVICE_ROLE_KEY:', supabaseServiceKey ? 'SET' : 'NOT SET');
+  console.log('All env vars:', Object.keys(process.env).filter(key => key.includes('SUPABASE')));
+
   if (supabaseUrl && supabaseServiceKey) {
     console.log('🚀 Using Supabase PostgreSQL database for registration');
     return new SupabaseDatabase();
   } else {
     console.log('📁 Using JSON file database (fallback) for registration');
+    console.log('❌ REASON: Missing environment variables');
     return new JsonDatabase();
   }
 }
@@ -372,17 +378,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // Save to unified database
     try {
+      console.log('🔄 Attempting to save tenant:', newTenant);
       const savedTenant = await db.createTenant(newTenant);
+      console.log('✅ Tenant saved:', savedTenant);
+      
+      console.log('🔄 Attempting to save user:', newUser);
       const savedUser = await db.createUser(newUser);
+      console.log('✅ User saved:', savedUser);
       
       console.log('✅ Registration successful for:', email);
-      console.log('🏢 Tenant created:', savedTenant.name || newTenant.name);
-      console.log('👤 User created:', savedUser.email || newUser.email);
     } catch (dbError) {
       console.error('❌ Database save error:', dbError);
+      console.error('❌ Error details:', JSON.stringify(dbError, null, 2));
       return res.status(500).json({
         success: false,
-        error: 'Veritabanı kayıt hatası'
+        error: 'Veritabanı kayıt hatası: ' + (dbError instanceof Error ? dbError.message : 'Unknown error')
       });
     }
 
