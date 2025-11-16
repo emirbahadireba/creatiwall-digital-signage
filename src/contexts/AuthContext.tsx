@@ -85,13 +85,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         const storedUser = localStorage.getItem('auth_user');
         const storedTenant = localStorage.getItem('auth_tenant');
 
-        if (storedToken && storedUser && storedTenant) {
-          setToken(storedToken);
-          setUser(JSON.parse(storedUser));
-          setTenant(JSON.parse(storedTenant));
+        if (storedToken && storedUser && storedTenant &&
+            storedUser !== 'undefined' && storedTenant !== 'undefined') {
+          try {
+            setToken(storedToken);
+            setUser(JSON.parse(storedUser));
+            setTenant(JSON.parse(storedTenant));
 
-          // Verify token is still valid
-          await verifyToken(storedToken);
+            // Verify token is still valid
+            await verifyToken(storedToken);
+          } catch (parseError) {
+            console.error('JSON parse error in auth initialization:', parseError);
+            clearAuthData();
+          }
         }
       } catch (error) {
         console.error('Auth initialization error:', error);
