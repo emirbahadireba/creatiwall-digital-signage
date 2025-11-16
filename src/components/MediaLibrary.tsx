@@ -108,9 +108,21 @@ const MediaLibrary = () => {
         }));
       }
       
-      setShowUploadModal(false);
+      setUploadProgress(100);
+      setUploadStatus('Upload başarılı!');
+      
+      // Show success for 1 second then close modal
+      setTimeout(() => {
+        setShowUploadModal(false);
+        setIsUploading(false);
+        setUploadProgress(0);
+        setUploadStatus('');
+      }, 1000);
     } catch (error) {
       console.error('Upload error:', error);
+      setIsUploading(false);
+      setUploadProgress(0);
+      setUploadStatus('');
       // Error is already handled in store
     }
   };
@@ -483,7 +495,8 @@ const MediaLibrary = () => {
                     type="file"
                     required
                     accept="image/*,video/*,audio/*"
-                    className="w-full px-4 py-3 bg-background border border-border rounded-xl text-text focus:outline-none focus:border-primary"
+                    disabled={isUploading}
+                    className="w-full px-4 py-3 bg-background border border-border rounded-xl text-text focus:outline-none focus:border-primary disabled:opacity-50 disabled:cursor-not-allowed"
                   />
                 </div>
 
@@ -492,7 +505,8 @@ const MediaLibrary = () => {
                   <input
                     type="text"
                     name="name"
-                    className="w-full px-4 py-3 bg-background border border-border rounded-xl text-text focus:outline-none focus:border-primary"
+                    disabled={isUploading}
+                    className="w-full px-4 py-3 bg-background border border-border rounded-xl text-text focus:outline-none focus:border-primary disabled:opacity-50 disabled:cursor-not-allowed"
                     placeholder="Otomatik olarak dosya adı kullanılacak"
                   />
                 </div>
@@ -502,7 +516,8 @@ const MediaLibrary = () => {
                   <input
                     type="text"
                     name="category"
-                    className="w-full px-4 py-3 bg-background border border-border rounded-xl text-text focus:outline-none focus:border-primary"
+                    disabled={isUploading}
+                    className="w-full px-4 py-3 bg-background border border-border rounded-xl text-text focus:outline-none focus:border-primary disabled:opacity-50 disabled:cursor-not-allowed"
                     placeholder="Kategori (opsiyonel)"
                   />
                 </div>
@@ -512,24 +527,59 @@ const MediaLibrary = () => {
                   <input
                     type="text"
                     name="tags"
-                    className="w-full px-4 py-3 bg-background border border-border rounded-xl text-text focus:outline-none focus:border-primary"
+                    disabled={isUploading}
+                    className="w-full px-4 py-3 bg-background border border-border rounded-xl text-text focus:outline-none focus:border-primary disabled:opacity-50 disabled:cursor-not-allowed"
                     placeholder="tanıtım, video, 2024"
                   />
                 </div>
+                
+                {/* Upload Progress */}
+                {isUploading && (
+                  <div className="space-y-3 p-4 bg-background rounded-xl border border-border">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-text font-medium">Yükleniyor...</span>
+                      <span className="text-textSecondary">{uploadProgress}%</span>
+                    </div>
+                    
+                    {/* Progress Bar */}
+                    <div className="w-full bg-border rounded-full h-2 overflow-hidden">
+                      <div
+                        className="h-full bg-primary transition-all duration-300 ease-out"
+                        style={{ width: `${uploadProgress}%` }}
+                      />
+                    </div>
+                    
+                    {/* Status Message */}
+                    {uploadStatus && (
+                      <div className="text-sm text-textSecondary text-center">
+                        {uploadStatus}
+                      </div>
+                    )}
+                  </div>
+                )}
                 
                 <div className="flex space-x-3 pt-4">
                   <button
                     type="button"
                     onClick={() => setShowUploadModal(false)}
-                    className="flex-1 px-4 py-3 border border-border rounded-xl text-textSecondary hover:text-text transition-colors"
+                    disabled={isUploading}
+                    className="flex-1 px-4 py-3 border border-border rounded-xl text-textSecondary hover:text-text transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     İptal
                   </button>
                   <button
                     type="submit"
-                    className="flex-1 px-4 py-3 bg-primary text-white rounded-xl hover:bg-primary/90 transition-colors"
+                    disabled={isUploading}
+                    className="flex-1 px-4 py-3 bg-primary text-white rounded-xl hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
                   >
-                    Yükle
+                    {isUploading ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        <span>Yükleniyor...</span>
+                      </>
+                    ) : (
+                      <span>Yükle</span>
+                    )}
                   </button>
                 </div>
               </form>
