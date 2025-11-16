@@ -50,11 +50,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    // For now, we'll use a simpler approach - direct base64 upload
-    // This works better with Vercel's serverless environment
-    const { fileData, fileName, fileType, name, type, category, tags, thumbnail } = req.body;
+    // Parse request body if it's a string (Vercel issue)
+    let body = req.body;
+    if (typeof req.body === 'string') {
+      try {
+        body = JSON.parse(req.body);
+      } catch (parseError) {
+        console.error('❌ JSON parse error:', parseError);
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid JSON in request body'
+        });
+      }
+    }
+
+    // Check if body exists
+    if (!body) {
+      console.error('❌ Request body is undefined');
+      return res.status(400).json({
+        success: false,
+        message: 'Request body is missing'
+      });
+    }
+
+    console.log('📦 Request body received:', {
+      hasFileData: !!body.fileData,
+      fileName: body.fileName,
+      fileType: body.fileType,
+      bodyKeys: Object.keys(body || {})
+    });
+
+    const { fileData, fileName, fileType, name, type, category, tags, thumbnail } = body;
     
     if (!fileData || !fileName) {
+      console.error('❌ Missing required fields:', { hasFileData: !!fileData, fileName });
       return res.status(400).json({
         success: false,
         message: 'File data and name are required'
