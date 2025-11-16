@@ -209,6 +209,30 @@ class JsonDatabase implements DatabaseInterface {
         status: "active",
         createdAt: "2025-11-14T04:00:00.000Z",
         updatedAt: "2025-11-14T04:00:00.000Z"
+      },
+      {
+        id: "user-test-001",
+        tenantId: "tenant-test-001",
+        email: "test@test.com",
+        password: "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBdXzgVrqZm9vO", // password: "123456"
+        firstName: "Test",
+        lastName: "User",
+        role: "tenant_admin",
+        status: "active",
+        createdAt: "2025-11-16T21:00:00.000Z",
+        updatedAt: "2025-11-16T21:00:00.000Z"
+      },
+      {
+        id: "user-emirbahadir-001",
+        tenantId: "tenant-emirbahadir-001",
+        email: "emirbahadir@gmail.com",
+        password: "$2b$12$8K7qGxvWxJ5nF2mH9pL3qOzYvX4wR6tE8sA1bC3dF5gH7jK9mN2pQ", // password: "134679Eba"
+        firstName: "Emir Bahadir",
+        lastName: "Eba",
+        role: "tenant_admin",
+        status: "active",
+        createdAt: "2025-11-16T21:00:00.000Z",
+        updatedAt: "2025-11-16T21:00:00.000Z"
       }
     ];
     
@@ -237,6 +261,46 @@ class JsonDatabase implements DatabaseInterface {
         },
         createdAt: "2025-11-14T04:00:00.000Z",
         updatedAt: "2025-11-14T04:00:00.000Z"
+      },
+      {
+        id: "user-test-001",
+        tenantId: "tenant-test-001",
+        email: "test@test.com",
+        firstName: "Test",
+        lastName: "User",
+        role: "tenant_admin",
+        status: "active",
+        preferences: {
+          language: 'tr',
+          timezone: 'Europe/Istanbul',
+          notifications: {
+            email: true,
+            browser: true,
+            mobile: false
+          }
+        },
+        createdAt: "2025-11-16T21:00:00.000Z",
+        updatedAt: "2025-11-16T21:00:00.000Z"
+      },
+      {
+        id: "user-emirbahadir-001",
+        tenantId: "tenant-emirbahadir-001",
+        email: "emirbahadir@gmail.com",
+        firstName: "Emir Bahadir",
+        lastName: "Eba",
+        role: "tenant_admin",
+        status: "active",
+        preferences: {
+          language: 'tr',
+          timezone: 'Europe/Istanbul',
+          notifications: {
+            email: true,
+            browser: true,
+            mobile: false
+          }
+        },
+        createdAt: "2025-11-16T21:00:00.000Z",
+        updatedAt: "2025-11-16T21:00:00.000Z"
       }
     ];
     
@@ -321,7 +385,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     // Handle /auth/login
-    if (url?.includes('/auth/login') || (url?.includes('/auth') && req.method === 'POST' && req.body?.email && req.body?.password && !req.body?.firstName)) {
+    if (req.method === 'POST' && req.body?.email && req.body?.password && !req.body?.firstName) {
       console.log('🔐 Login request');
       
       const { email, password } = req.body;
@@ -379,7 +443,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Handle /auth/register
-    if (url?.includes('/auth/register') || (url?.includes('/auth') && req.method === 'POST' && req.body?.firstName)) {
+    if (req.method === 'POST' && req.body?.firstName) {
       console.log('📝 Register request');
       
       const {
@@ -523,7 +587,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Handle /auth/me
-    if (url?.includes('/auth/me') || (url?.includes('/auth') && req.method === 'GET')) {
+    if (req.method === 'GET') {
       console.log('👤 Me request');
       
       // Get token from Authorization header
