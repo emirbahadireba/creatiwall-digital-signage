@@ -1,9 +1,9 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 
-// Hardcoded Supabase credentials (same as register/login)
-const supabaseUrl = 'https://ixqkqvhqfbpjpibhlqtb.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml4cWtxdmhxZmJwanBpYmhscXRiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzE3MjU5NzEsImV4cCI6MjA0NzMwMTk3MX0.YCOkdOJNHS8tJoqeGBYyJlBxKOqaQkGOQKJmrOQKqhI';
+// Supabase credentials (same as upload endpoint)
+const supabaseUrl = process.env.SUPABASE_URL || 'https://jlrsklomfbfoogaekfyd.supabase.co';
+const supabaseKey = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpscnNrbG9tZmJmb29nYWVrZnlkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMxNDUyNzUsImV4cCI6MjA3ODcyMTI3NX0.bCua_8dkQm03_0kvtRCRIuj8Knycax06pw7yPRomIH0';
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
