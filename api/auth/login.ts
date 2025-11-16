@@ -1,89 +1,98 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { createClient } from '@supabase/supabase-js';
 
-// Import unified database
-const db = (() => {
-  try {
-    // Try to import from server directory first
-    return require('../../server/src/db/unified-database.js').db;
-  } catch (error) {
-    console.log('Server unified database not found, using fallback');
-    // Fallback implementation
-    return {
-      async findUserByEmail(email: string) {
-        // Fallback database with existing users
-        const users = [
-          {
-            id: "user-admin-001",
-            tenantId: "tenant-demo-001",
-            email: "admin@demo.com",
-            password: "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBdXzgVrqZm9vO", // password: "admin123"
-            firstName: "Admin",
-            lastName: "User",
-            role: "tenant_admin",
-            status: "active",
-            createdAt: "2025-11-14T04:00:00.000Z",
-            updatedAt: "2025-11-14T04:00:00.000Z"
-          },
-          {
-            id: "simple-test-user",
-            tenantId: "tenant-demo-001",
-            email: "test@test.com",
-            password: "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBdXzgVrqZm9vO", // password: "password123"
-            firstName: "Test",
-            lastName: "User",
-            role: "tenant_admin",
-            status: "active",
-            createdAt: "2025-11-15T12:00:00.000Z",
-            updatedAt: "2025-11-15T12:00:00.000Z"
-          },
-          {
-            id: "f2708bf9-0b00-4952-bc9e-d278e109c918",
-            tenantId: "aa11e13c-323c-4724-b5d7-fde42ab80fd4",
-            email: "emirbahadir@gmail.com",
-            password: "$2b$12$moetwvTw.pKMPFMg1yM4K.Sfm4m57vAeXAkjXIhAK5z9WL9pY4HsG",
-            firstName: "Emir",
-            lastName: "Bahadır",
-            role: "tenant_admin",
-            status: "active",
-            createdAt: "2025-11-14T04:25:32.017Z",
-            updatedAt: "2025-11-14T04:25:32.017Z"
-          },
-          {
-            id: "de9eb699-2d55-4298-825a-ee2ef4a8874f",
-            tenantId: "ecac70bf-3b60-40b3-a366-eafa6ad5dfac",
-            email: "test@demo.com",
-            password: "$2b$12$eFqSJAxC2jOUreRf31P4yusBxoyHTC8pTwkKptA/Tf.xjmfyLL3Y.",
-            firstName: "Test",
-            lastName: "User",
-            role: "tenant_admin",
-            status: "active",
-            createdAt: "2025-11-14T04:28:29.726Z",
-            updatedAt: "2025-11-14T04:28:29.726Z"
-          },
-          {
-            id: "a6cdc0e5-57d3-43e7-82b2-44be508b33d1",
-            tenantId: "2c3e79b5-6ff1-4f20-93a7-969f69ec94a3",
-            email: "test@example.com",
-            password: "$2b$12$xrYYfOdOBqIGCiBS8wtAKOSx9XQNh5hEcZwCUEUzjg1CxPZasW.s2",
-            firstName: "Test",
-            lastName: "User",
-            role: "tenant_admin",
-            status: "active",
-            createdAt: "2025-11-15T11:37:34.302Z",
-            updatedAt: "2025-11-15T11:37:34.302Z"
-          }
-        ];
-        
-        const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-        return user || null;
+// Unified Database Interface
+interface DatabaseInterface {
+  findUserByEmail(email: string): Promise<any>;
+}
+
+// Supabase Database Implementation
+class SupabaseDatabase implements DatabaseInterface {
+  private supabase: any;
+
+  constructor() {
+    const supabaseUrl = process.env.SUPABASE_URL || 'https://jlrsklomfbfoogaekfyd.supabase.co';
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpscnNrbG9tZmJmb29nYWVrZnlkIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2MzE0NTI3NSwiZXhwIjoyMDc4NzIxMjc1fQ.ugrz_KRYflk6uGPz3-uD0dIXeNJFiC4xurjyViLf8KE';
+    
+    console.log('🔧 Login SupabaseDatabase constructor - URL:', supabaseUrl);
+    console.log('🔧 Login SupabaseDatabase constructor - Key:', supabaseServiceKey ? 'SET' : 'NOT SET');
+    
+    this.supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
       }
-    };
+    });
   }
-})();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+  async findUserByEmail(email: string): Promise<any> {
+    try {
+      const { data, error } = await this.supabase
+        .from('users')
+        .select('*')
+        .eq('email', email.toLowerCase())
+        .single();
+      
+      if (error && error.code !== 'PGRST116') throw error;
+      
+      // Convert snake_case to camelCase
+      if (data) {
+        return {
+          id: data.id,
+          tenantId: data.tenant_id,
+          email: data.email,
+          password: data.password,
+          firstName: data.first_name,
+          lastName: data.last_name,
+          role: data.role,
+          status: data.status,
+          emailVerified: data.email_verified,
+          createdAt: data.created_at,
+          updatedAt: data.updated_at
+        };
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Supabase findUserByEmail error:', error);
+      return null;
+    }
+  }
+}
+
+// JSON Database Implementation (Fallback)
+class JsonDatabase implements DatabaseInterface {
+  async findUserByEmail(email: string): Promise<any> {
+    // Fallback database with existing users
+    const users = [
+      {
+        id: "user-admin-001",
+        tenantId: "tenant-demo-001",
+        email: "admin@demo.com",
+        password: "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBdXzgVrqZm9vO", // password: "admin123"
+        firstName: "Admin",
+        lastName: "User",
+        role: "tenant_admin",
+        status: "active",
+        createdAt: "2025-11-14T04:00:00.000Z",
+        updatedAt: "2025-11-14T04:00:00.000Z"
+      }
+    ];
+    
+    const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    return user || null;
+  }
+}
+
+// Factory function to create the appropriate database instance
+function createDatabase(): DatabaseInterface {
+  console.log('🚀 FORCING Supabase PostgreSQL database for login');
+  return new SupabaseDatabase();
+}
+
+const JWT_SECRET = process.env.JWT_SECRET || '431cc51f80b54beb2905d81bfef8cab17fee760f5a2f36af07edb1189dae9205';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CORS headers
@@ -113,8 +122,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
+    // Initialize unified database
+    const db = createDatabase();
+    console.log('📊 Database initialized for login');
+
     // Use unified database to find user
-    console.log('🔍 Searching for user in unified database...');
+    console.log('🔍 Searching for user in Supabase database...');
     const user = await db.findUserByEmail(email);
     console.log('👤 User found:', !!user);
 
