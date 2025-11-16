@@ -1,7 +1,7 @@
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
-import unifiedDb from '../db/unified-database';
-import { authenticate, authorize, tenantIsolation } from '../middleware/auth';
+import { db } from '../db/unified-database.js';
+import { authenticate, authorize, tenantIsolation } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -13,7 +13,7 @@ router.use(tenantIsolation);
 router.get('/', async (req, res) => {
   try {
     const tenantId = (req as any).user.tenantId;
-    const schedules = await unifiedDb.getSchedulesByTenant(tenantId);
+    const schedules = await db.getSchedulesByTenant(tenantId);
     res.json(schedules);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -24,7 +24,7 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const tenantId = (req as any).user.tenantId;
-    const schedule = await unifiedDb.getScheduleById(req.params.id);
+    const schedule = await db.getScheduleById(req.params.id);
     if (!schedule) {
       return res.status(404).json({ error: 'Schedule not found' });
     }
@@ -55,7 +55,7 @@ router.post('/', async (req, res) => {
       deviceIds: deviceIds || []
     };
 
-    const createdSchedule = await unifiedDb.createSchedule(scheduleData);
+    const createdSchedule = await db.createSchedule(scheduleData);
     res.status(201).json(createdSchedule);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
@@ -81,7 +81,7 @@ router.put('/:id', async (req, res) => {
       deviceIds: deviceIds || []
     };
 
-    const updatedSchedule = await unifiedDb.updateSchedule(req.params.id, updateData);
+    const updatedSchedule = await db.updateSchedule(req.params.id, updateData);
     if (!updatedSchedule) {
       return res.status(404).json({ error: 'Schedule not found' });
     }
@@ -96,7 +96,7 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   try {
     const tenantId = (req as any).user.tenantId;
-    const deleted = await unifiedDb.deleteSchedule(req.params.id);
+    const deleted = await db.deleteSchedule(req.params.id);
     if (!deleted) {
       return res.status(404).json({ error: 'Schedule not found' });
     }
