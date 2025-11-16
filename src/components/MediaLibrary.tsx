@@ -136,7 +136,7 @@ const MediaLibrary = () => {
           }));
         }
         
-        // Update store
+        // Update store manually since we're bypassing uploadMediaFile
         const { mediaItems } = useStore.getState();
         useStore.setState({ mediaItems: [...mediaItems, itemWithDate] });
         

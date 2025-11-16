@@ -185,7 +185,7 @@ export const useStore = create<StoreState>()(
     (set, get) => ({
       // Initial State
       sidebarCollapsed: false,
-      theme: 'light',
+      theme: (typeof window !== 'undefined' ? (localStorage.getItem('theme') as 'light' | 'dark') : null) || 'light',
       activeView: 'dashboard',
       
       devices: [],
