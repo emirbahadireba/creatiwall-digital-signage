@@ -1,7 +1,16 @@
 import { VercelRequest, VercelResponse } from '@vercel/node';
+import FormData from 'form-data';
+import fetch from 'node-fetch';
+import { createClient } from '@supabase/supabase-js';
+
+// Supabase configuration
+const supabaseUrl = process.env.SUPABASE_URL || 'https://jlrsklomfbfoogaekfyd.supabase.co';
+const supabaseKey = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpscnNrbG9tZmJmb29nYWVrZnlkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMxNDUyNzUsImV4cCI6MjA3ODcyMTI3NX0.bCua_8dkQm03_0kvtRCRIuj8Knycax06pw7yPRomIH0';
+
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  console.log('🚀 Media Upload API - Start');
+  console.log('🚀 Media Upload API - Hostinger Integration');
   console.log('Method:', req.method);
   
   // CORS headers
@@ -81,7 +90,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     console.log('🔄 Generated filename:', uniqueFileName);
 
-    // Convert base64 to buffer for size calculation
+    // Convert base64 to buffer
     const base64Data = fileData.replace(/^data:[^;]+;base64,/, '');
     const fileBuffer = Buffer.from(base64Data, 'base64');
     
@@ -91,37 +100,212 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       bufferLength: fileBuffer.length
     });
 
-    // FALLBACK SYSTEM: Since Supabase connection is failing in Vercel,
-    // we'll create a mock response that simulates successful upload
-    console.log('⚠️ Using fallback system due to Supabase connection issues');
+    // HOSTINGER UPLOAD INTEGRATION
+    console.log('🌐 Uploading to Hostinger...');
     
-    // Generate a mock public URL (this would normally come from Supabase Storage)
-    const mockPublicUrl = `https://ixqkqvhqfbpjpibhlqtb.supabase.co/storage/v1/object/public/media-files/${uniqueFileName}`;
+    // Get Hostinger configuration from environment variables
+    const hostingerDomain = process.env.HOSTINGER_DOMAIN;
+    const hostingerToken = process.env.HOSTINGER_UPLOAD_TOKEN;
+    const mediaFolder = process.env.HOSTINGER_MEDIA_FOLDER || 'creatiwall-media';
     
-    // Create mock database record
-    const mockMediaRecord = {
-      id: timestamp, // Use timestamp as ID
-      name: name || fileName,
-      type: type || 'image',
-      size: fileBuffer.length,
-      url: mockPublicUrl,
-      category: category || 'uncategorized',
-      tags: tags || [],
-      thumbnail: thumbnail || null,
-      tenantId: 1, // Mock tenant ID
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
+    if (!hostingerDomain) {
+      throw new Error('HOSTINGER_DOMAIN environment variable not set');
+    }
+    
+    const hostingerUploadUrl = `https://${hostingerDomain}/upload.php`;
+    
+    try {
+      // Create form data for file upload
+      const formData = new FormData();
+      formData.append('file', fileBuffer, {
+        filename: uniqueFileName,
+        contentType: fileType || 'application/octet-stream'
+      });
+      formData.append('folder', mediaFolder);
+      
+      // Prepare headers
+      const headers = {
+        ...formData.getHeaders()
+      };
+      
+      // Add authorization if token is provided
+      if (hostingerToken) {
+        headers['Authorization'] = `Bearer ${hostingerToken}`;
+      }
+      
+      // Upload to Hostinger
+      const uploadResponse = await fetch(hostingerUploadUrl, {
+        method: 'POST',
+        body: formData,
+        headers
+      });
+      
+      if (!uploadResponse.ok) {
+        throw new Error(`Hostinger upload failed: ${uploadResponse.status} ${uploadResponse.statusText}`);
+      }
+      
+      const uploadResult = await uploadResponse.json();
+      console.log('✅ Hostinger upload successful:', uploadResult);
+      
+      // Generate public URL
+      const publicUrl = `https://${hostingerDomain}/${mediaFolder}/${uniqueFileName}`;
+      
+      // Save to Supabase database
+      console.log('💾 Saving media record to Supabase database...');
+      
+      const mediaRecord = {
+        name: name || fileName,
+        type: type || 'image',
+        size: fileBuffer.length,
+        url: publicUrl,
+        category: category || 'uncategorized',
+        tags: tags || [],
+        thumbnail: thumbnail || null,
+        tenant_id: 1, // TODO: Get from authenticated user
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
 
-    console.log('✅ Mock media record created:', mockMediaRecord.id);
-    console.log('🔗 Mock URL:', mockPublicUrl);
+      const { data: dbData, error: dbError } = await supabase
+        .from('media_items')
+        .insert([mediaRecord])
+        .select()
+        .single();
 
-    return res.status(201).json({
-      success: true,
-      data: mockMediaRecord,
-      source: 'fallback',
-      message: 'File uploaded successfully (fallback mode)'
-    });
+      if (dbError) {
+        console.error('❌ Database insert error:', dbError);
+        // Don't fail the upload, just log the error
+        console.log('⚠️ File uploaded to Hostinger but database save failed');
+        
+        return res.status(201).json({
+          success: true,
+          data: {
+            id: timestamp,
+            ...mediaRecord,
+            tenantId: mediaRecord.tenant_id,
+            createdAt: mediaRecord.created_at,
+            updatedAt: mediaRecord.updated_at
+          },
+          source: 'hostinger-only',
+          message: 'File uploaded to Hostinger (database save failed)',
+          warning: 'Database connection issue'
+        });
+      }
+
+      console.log('✅ Media uploaded to Hostinger and saved to Supabase!');
+      console.log('🔗 Public URL:', publicUrl);
+      console.log('💾 Database ID:', dbData.id);
+
+      // Convert snake_case to camelCase for response
+      const responseData = {
+        id: dbData.id,
+        name: dbData.name,
+        type: dbData.type,
+        size: dbData.size,
+        url: dbData.url,
+        category: dbData.category,
+        tags: dbData.tags,
+        thumbnail: dbData.thumbnail,
+        tenantId: dbData.tenant_id,
+        createdAt: dbData.created_at,
+        updatedAt: dbData.updated_at
+      };
+
+      return res.status(201).json({
+        success: true,
+        data: responseData,
+        source: 'hostinger-supabase',
+        message: 'File uploaded to Hostinger and saved to Supabase successfully'
+      });
+      
+    } catch (hostingerError) {
+      console.error('❌ Hostinger upload failed:', hostingerError);
+      
+      // FALLBACK: Create mock response if Hostinger fails
+      console.log('⚠️ Using fallback system due to Hostinger upload failure');
+      
+      const fallbackDomain = hostingerDomain || 'your-domain.com';
+      const mockPublicUrl = `https://${fallbackDomain}/${mediaFolder}/${uniqueFileName}`;
+      
+      // FALLBACK: Try to save to Supabase even if Hostinger fails
+      console.log('💾 Attempting to save to Supabase database (fallback)...');
+      
+      const fallbackRecord = {
+        name: name || fileName,
+        type: type || 'image',
+        size: fileBuffer.length,
+        url: mockPublicUrl,
+        category: category || 'uncategorized',
+        tags: tags || [],
+        thumbnail: thumbnail || null,
+        tenant_id: 1,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      try {
+        const { data: dbData, error: dbError } = await supabase
+          .from('media_items')
+          .insert([fallbackRecord])
+          .select()
+          .single();
+
+        if (dbError) {
+          console.error('❌ Fallback database insert error:', dbError);
+          throw dbError;
+        }
+
+        console.log('✅ Saved to Supabase database (fallback mode)');
+        
+        const responseData = {
+          id: dbData.id,
+          name: dbData.name,
+          type: dbData.type,
+          size: dbData.size,
+          url: dbData.url,
+          category: dbData.category,
+          tags: dbData.tags,
+          thumbnail: dbData.thumbnail,
+          tenantId: dbData.tenant_id,
+          createdAt: dbData.created_at,
+          updatedAt: dbData.updated_at
+        };
+
+        return res.status(201).json({
+          success: true,
+          data: responseData,
+          source: 'supabase-fallback',
+          message: 'File metadata saved to database (Hostinger upload failed)',
+          warning: 'File not physically uploaded - please configure Hostinger'
+        });
+        
+      } catch (fallbackDbError) {
+        console.error('❌ Fallback database save also failed:', fallbackDbError);
+        
+        // Complete fallback - just return mock data
+        const mockMediaRecord = {
+          id: timestamp,
+          name: name || fileName,
+          type: type || 'image',
+          size: fileBuffer.length,
+          url: mockPublicUrl,
+          category: category || 'uncategorized',
+          tags: tags || [],
+          thumbnail: thumbnail || null,
+          tenantId: 1,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+
+        return res.status(201).json({
+          success: true,
+          data: mockMediaRecord,
+          source: 'mock-fallback',
+          message: 'File processed (mock mode - please configure Hostinger and check Supabase)',
+          warning: 'Neither Hostinger nor Supabase connection working'
+        });
+      }
+    }
 
   } catch (error) {
     console.error('💥 Media upload error:', error);

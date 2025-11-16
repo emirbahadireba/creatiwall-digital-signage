@@ -1,0 +1,14 @@
+# Media folder security
+Options -Indexes
+
+# Allow access to media files
+<FilesMatch "\.(jpg|jpeg|png|gif|mp4|webm|pdf)$">
+    Order allow,deny
+    Allow from all
+</FilesMatch>
+
+# Prevent execution of PHP files in media folder
+<FilesMatch "\.php$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>

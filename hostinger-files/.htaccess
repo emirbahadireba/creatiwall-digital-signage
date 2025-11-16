@@ -1,0 +1,20 @@
+# CORS Headers
+Header always set Access-Control-Allow-Origin "*"
+Header always set Access-Control-Allow-Methods "POST, GET, OPTIONS"
+Header always set Access-Control-Allow-Headers "Content-Type, Authorization"
+
+# Security
+Options -Indexes
+DirectoryIndex index.php index.html
+
+# File Upload Limits
+php_value upload_max_filesize 50M
+php_value post_max_size 50M
+php_value max_execution_time 300
+php_value memory_limit 256M
+
+# Prevent direct access to sensitive files
+<Files "*.log">
+    Order allow,deny
+    Deny from all
+</Files>

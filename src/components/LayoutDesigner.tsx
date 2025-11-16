@@ -442,7 +442,9 @@ export default function LayoutDesigner() {
     layoutCategories,
     validateLayoutName,
     mediaItems,
+    fetchMediaItems, // ✅ MEDYA FETCH FONKSİYONU
     playlists,
+    fetchPlaylists, // ✅ PLAYLIST FETCH FONKSİYONU
     setHasUnsavedLayoutChanges
   } = useStore();
   const [viewMode, setViewMode] = useState<'gallery' | 'editor'>('gallery');
@@ -510,12 +512,14 @@ export default function LayoutDesigner() {
     return matchesCategory && matchesOrientation;
   });
 
-  // Load layouts and presets on mount
+  // Load layouts, presets, and media on mount
   useEffect(() => {
     fetchLayouts();
     fetchLayoutPresets();
     fetchLayoutCategories();
-  }, [fetchLayouts, fetchLayoutPresets, fetchLayoutCategories]);
+    fetchMediaItems(); // ✅ MEDYALARI YÜKLEYİN!
+    fetchPlaylists(); // ✅ PLAYLIST'LERİ DE YÜKLEYİN!
+  }, [fetchLayouts, fetchLayoutPresets, fetchLayoutCategories, fetchMediaItems, fetchPlaylists]);
 
   // Track initial state for comparison
   const initialZonesRef = useRef<LayoutZone[]>([]);
