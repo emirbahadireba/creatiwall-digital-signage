@@ -15,6 +15,18 @@ const db = (() => {
         // Fallback database with existing users
         const users = [
           {
+            id: "user-admin-001",
+            tenantId: "tenant-demo-001",
+            email: "admin@demo.com",
+            password: "$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBdXzgVrqZm9vO", // password: "admin123"
+            firstName: "Admin",
+            lastName: "User",
+            role: "tenant_admin",
+            status: "active",
+            createdAt: "2025-11-14T04:00:00.000Z",
+            updatedAt: "2025-11-14T04:00:00.000Z"
+          },
+          {
             id: "simple-test-user",
             tenantId: "tenant-demo-001",
             email: "test@test.com",
