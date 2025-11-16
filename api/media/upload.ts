@@ -5,7 +5,36 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = 'https://ixqkqvhqfbpjpibhlqtb.supabase.co';
 const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml4cWtxdmhxZmJwanBpYmhscXRiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzE3MjU5NzEsImV4cCI6MjA0NzMwMTk3MX0.YCOkdOJNHS8tJoqeGBYyJlBxKOqaQkGOQKJmrOQKqhI';
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Create Supabase client with robust configuration for Vercel
+const supabase = createClient(supabaseUrl, supabaseKey, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false
+  }
+});
+
+// Retry mechanism for network operations
+async function withRetry<T>(operation: () => Promise<T>, maxRetries = 3): Promise<T> {
+  let lastError: Error;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`🔄 Attempt ${attempt}/${maxRetries}`);
+      return await operation();
+    } catch (error) {
+      lastError = error as Error;
+      console.error(`❌ Attempt ${attempt} failed:`, error);
+      
+      if (attempt < maxRetries) {
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000); // Exponential backoff, max 5s
+        console.log(`⏳ Waiting ${delay}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+  
+  throw lastError!;
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   console.log('🚀 Media Upload API - Start');
@@ -100,9 +129,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       bufferLength: fileBuffer.length
     });
 
-    // Test Supabase connection first
+    // Test Supabase connection first with retry
     console.log('🔗 Testing Supabase connection...');
-    try {
+    const { buckets, mediaFilesBucket } = await withRetry(async () => {
       const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
       if (bucketsError) {
         console.error('❌ Supabase connection error:', bucketsError);
@@ -116,26 +145,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         throw new Error('media-files bucket not found');
       }
       console.log('✅ media-files bucket found');
-    } catch (connectionError) {
-      console.error('❌ Supabase connection test failed:', connectionError);
-      throw connectionError;
-    }
+      
+      return { buckets, mediaFilesBucket };
+    });
     
-    // Upload to Supabase Storage
+    // Upload to Supabase Storage with retry
     console.log('📤 Uploading to Supabase Storage...');
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('media-files')
-      .upload(uniqueFileName, fileBuffer, {
-        contentType: fileType || 'application/octet-stream',
-        upsert: false
-      });
+    const uploadData = await withRetry(async () => {
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('media-files')
+        .upload(uniqueFileName, fileBuffer, {
+          contentType: fileType || 'application/octet-stream',
+          upsert: false
+        });
 
-    if (uploadError) {
-      console.error('❌ Supabase Storage upload error:', uploadError);
-      throw new Error(`Storage upload failed: ${uploadError.message}`);
-    }
+      if (uploadError) {
+        console.error('❌ Supabase Storage upload error:', uploadError);
+        throw new Error(`Storage upload failed: ${uploadError.message}`);
+      }
 
-    console.log('✅ File uploaded to Supabase Storage:', uploadData.path);
+      console.log('✅ File uploaded to Supabase Storage:', uploadData.path);
+      return uploadData;
+    });
 
     // Get public URL
     const { data: urlData } = supabase.storage
@@ -145,7 +176,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const publicUrl = urlData.publicUrl;
     console.log('🔗 Public URL generated:', publicUrl);
 
-    // Save to database
+    // Save to database with retry
     const mediaRecord = {
       name: name || fileName,
       type: type || 'image',
@@ -161,27 +192,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     console.log('💾 Saving to database:', mediaRecord);
 
-    const { data: dbData, error: dbError } = await supabase
-      .from('media_items')
-      .insert([mediaRecord])
-      .select()
-      .single();
+    const dbData = await withRetry(async () => {
+      const { data: dbData, error: dbError } = await supabase
+        .from('media_items')
+        .insert([mediaRecord])
+        .select()
+        .single();
 
-    if (dbError) {
-      console.error('❌ Database insert error:', dbError);
-      
-      // Clean up uploaded file
-      try {
-        await supabase.storage.from('media-files').remove([uniqueFileName]);
-        console.log('🧹 Cleaned up uploaded file');
-      } catch (cleanupError) {
-        console.error('❌ Cleanup error:', cleanupError);
+      if (dbError) {
+        console.error('❌ Database insert error:', dbError);
+        throw new Error(`Database insert failed: ${dbError.message}`);
       }
-      
-      throw new Error(`Database insert failed: ${dbError.message}`);
-    }
 
-    console.log('✅ Media item saved to database:', dbData.id);
+      console.log('✅ Media item saved to database:', dbData.id);
+      return dbData;
+    });
 
     // Convert snake_case to camelCase for response
     const responseData = {
