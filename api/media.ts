@@ -47,6 +47,159 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end();
   }
 
+  const { url } = req;
+  
+  // Handle individual media operations (/media/{id})
+  const mediaIdMatch = url?.match(/\/media\/([^\/\?]+)/);
+  if (mediaIdMatch) {
+    const mediaId = mediaIdMatch[1];
+
+    try {
+      if (req.method === 'GET') {
+        console.log('📋 Getting single media item:', mediaId);
+        
+        const { data, error } = await supabase
+          .from('media_items')
+          .select('*')
+          .eq('id', mediaId)
+          .single();
+
+        if (error) {
+          console.error('❌ Supabase media error:', error);
+          console.log('🔄 Using fallback database...');
+          
+          const media = database.media.find(m => m.id === mediaId);
+          if (!media) {
+            return res.status(404).json({
+              success: false,
+              message: 'Media item not found'
+            });
+          }
+          
+          return res.status(200).json({
+            success: true,
+            data: media,
+            source: 'fallback'
+          });
+        }
+
+        console.log('✅ Media item retrieved from Supabase:', data);
+        
+        // Convert snake_case to camelCase for frontend
+        const convertedData = convertToCamelCase(data);
+        
+        return res.status(200).json({
+          success: true,
+          data: convertedData,
+          source: 'supabase'
+        });
+      }
+
+      if (req.method === 'PUT') {
+        console.log('✏️ Updating media item:', mediaId);
+        const updateData = req.body;
+
+        // Convert camelCase to snake_case for database
+        const dbData = convertToSnakeCase({
+          ...updateData,
+          updatedAt: new Date().toISOString()
+        });
+
+        console.log('💾 Updating media item in Supabase:', mediaId, dbData);
+
+        const { data, error } = await supabase
+          .from('media_items')
+          .update(dbData)
+          .eq('id', mediaId)
+          .select()
+          .single();
+
+        if (error) {
+          console.error('❌ Supabase media update error:', error);
+          console.log('🔄 Using fallback database...');
+          
+          const mediaIndex = database.media.findIndex(m => m.id === mediaId);
+          if (mediaIndex === -1) {
+            return res.status(404).json({
+              success: false,
+              message: 'Media item not found'
+            });
+          }
+          
+          database.media[mediaIndex] = {
+            ...database.media[mediaIndex],
+            ...updateData,
+            updatedAt: new Date().toISOString()
+          };
+          
+          return res.status(200).json({
+            success: true,
+            data: database.media[mediaIndex],
+            source: 'fallback'
+          });
+        }
+
+        console.log('✅ Media item updated in Supabase:', data);
+        
+        // Convert back to camelCase for response
+        const convertedData = convertToCamelCase(data);
+        
+        return res.status(200).json({
+          success: true,
+          data: convertedData,
+          source: 'supabase'
+        });
+      }
+
+      if (req.method === 'DELETE') {
+        console.log('🗑️ Deleting media item:', mediaId);
+
+        const { error } = await supabase
+          .from('media_items')
+          .delete()
+          .eq('id', mediaId);
+
+        if (error) {
+          console.error('❌ Supabase media delete error:', error);
+          console.log('🔄 Using fallback database...');
+          
+          const mediaIndex = database.media.findIndex(m => m.id === mediaId);
+          if (mediaIndex === -1) {
+            return res.status(404).json({
+              success: false,
+              message: 'Media item not found'
+            });
+          }
+          
+          database.media.splice(mediaIndex, 1);
+          
+          return res.status(200).json({
+            success: true,
+            message: 'Media item deleted',
+            source: 'fallback'
+          });
+        }
+
+        console.log('✅ Media item deleted from Supabase');
+        
+        return res.status(200).json({
+          success: true,
+          message: 'Media item deleted',
+          source: 'supabase'
+        });
+      }
+
+    } catch (error) {
+      console.error('💥 Media operation error:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Internal server error',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+
+  // Handle collection operations (/media)
   try {
     if (req.method === 'GET') {
       console.log('📋 Getting media items from Supabase...');
@@ -126,117 +279,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(201).json({
         success: true,
         data: convertedData,
-        source: 'supabase'
-      });
-    }
-
-    if (req.method === 'PUT') {
-      console.log('✏️ Updating media item...');
-      const { id, ...updateData } = req.body;
-      
-      if (!id) {
-        return res.status(400).json({
-          success: false,
-          message: 'Media ID is required'
-        });
-      }
-
-      // Convert camelCase to snake_case for database
-      const dbData = convertToSnakeCase({
-        ...updateData,
-        updatedAt: new Date().toISOString()
-      });
-
-      console.log('💾 Updating in Supabase:', id, dbData);
-
-      const { data, error } = await supabase
-        .from('media_items')
-        .update(dbData)
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) {
-        console.error('❌ Supabase update error:', error);
-        console.log('🔄 Using fallback database...');
-        
-        const mediaIndex = database.media.findIndex(m => m.id === id);
-        if (mediaIndex !== -1) {
-          database.media[mediaIndex] = {
-            ...database.media[mediaIndex],
-            ...updateData,
-            updatedAt: new Date().toISOString()
-          };
-          
-          return res.status(200).json({
-            success: true,
-            data: database.media[mediaIndex],
-            source: 'fallback'
-          });
-        }
-        
-        return res.status(404).json({
-          success: false,
-          message: 'Media item not found'
-        });
-      }
-
-      console.log('✅ Media item updated in Supabase:', data);
-      
-      // Convert back to camelCase for response
-      const convertedData = convertToCamelCase(data);
-      
-      return res.status(200).json({
-        success: true,
-        data: convertedData,
-        source: 'supabase'
-      });
-    }
-
-    if (req.method === 'DELETE') {
-      console.log('🗑️ Deleting media item...');
-      const { id } = req.query;
-      
-      if (!id || typeof id !== 'string') {
-        return res.status(400).json({
-          success: false,
-          message: 'Media ID is required'
-        });
-      }
-
-      console.log('💾 Deleting from Supabase:', id);
-
-      const { error } = await supabase
-        .from('media_items')
-        .delete()
-        .eq('id', id);
-
-      if (error) {
-        console.error('❌ Supabase delete error:', error);
-        console.log('🔄 Using fallback database...');
-        
-        const mediaIndex = database.media.findIndex(m => m.id === id);
-        if (mediaIndex !== -1) {
-          database.media.splice(mediaIndex, 1);
-          
-          return res.status(200).json({
-            success: true,
-            message: 'Media item deleted',
-            source: 'fallback'
-          });
-        }
-        
-        return res.status(404).json({
-          success: false,
-          message: 'Media item not found'
-        });
-      }
-
-      console.log('✅ Media item deleted from Supabase');
-      
-      return res.status(200).json({
-        success: true,
-        message: 'Media item deleted',
         source: 'supabase'
       });
     }
