@@ -292,7 +292,7 @@ class ApiService {
   }
 
   async getWidgetInstances() {
-    return this.request<WidgetInstanceData[]>('/widgets/instances');
+    return this.request<WidgetInstanceData[]>('/widgets?type=instances');
   }
 
   async getWidgetInstance(id: string) {

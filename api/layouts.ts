@@ -70,10 +70,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end();
   }
 
-  const { url } = req;
+  const { url, query } = req;
+  const { type } = query;
   
-  // Handle /presets endpoint
-  if (url?.includes('/presets')) {
+  // Handle ?type=presets query parameter
+  if (type === 'presets') {
     if (req.method === 'GET') {
       console.log('📐 Getting layout presets...');
       return res.status(200).json({
@@ -83,8 +84,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
   
-  // Handle /categories endpoint
-  if (url?.includes('/categories')) {
+  // Handle ?type=categories query parameter
+  if (type === 'categories') {
     if (req.method === 'GET') {
       console.log('📂 Getting layout categories...');
       return res.status(200).json({

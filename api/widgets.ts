@@ -104,11 +104,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).end();
   }
 
-  const { url } = req;
+  const { url, query } = req;
+  const { type } = query;
 
   try {
-    // Handle /templates endpoint
-    if (url?.includes('/templates')) {
+    // Handle /templates endpoint or ?type=templates
+    if (url?.includes('/templates') || type === 'templates') {
       if (req.method === 'GET') {
         console.log('📋 Getting widget templates...');
         return res.status(200).json({
@@ -119,8 +120,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    // Handle /instances endpoint
-    if (url?.includes('/instances')) {
+    // Handle /instances endpoint or ?type=instances
+    if (url?.includes('/instances') || type === 'instances') {
       if (req.method === 'GET') {
         console.log('📋 Getting widget instances from Supabase...');
         

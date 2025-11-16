@@ -295,7 +295,7 @@ export const useStore = create<StoreState>((set, get) => ({
         headers['Authorization'] = `Bearer ${token}`;
       }
       
-      const response = await fetch('/api/layouts/presets', { headers });
+      const response = await fetch('/api/layouts?type=presets', { headers });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const presets = await response.json();
       set({ layoutPresets: presets });
@@ -315,7 +315,7 @@ export const useStore = create<StoreState>((set, get) => ({
         headers['Authorization'] = `Bearer ${token}`;
       }
       
-      const response = await fetch('/api/layouts/categories', { headers });
+      const response = await fetch('/api/layouts?type=categories', { headers });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const categories = await response.json();
       set({ layoutCategories: categories });
