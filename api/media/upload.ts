@@ -79,7 +79,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const base64Data = fileData.replace(/^data:[^;]+;base64,/, '');
     const fileBuffer = Buffer.from(base64Data, 'base64');
     
-    // Upload to Supabase Storage
+    // Upload to Supabase Storage (PRIVATE bucket for security)
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('media-files')
       .upload(uniqueFileName, fileBuffer, {
@@ -94,13 +94,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     console.log('✅ File uploaded to Supabase Storage:', uploadData.path);
 
-    // Get public URL
-    const { data: urlData } = supabase.storage
+    // Generate signed URL for private access (expires in 1 year)
+    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
       .from('media-files')
-      .getPublicUrl(uniqueFileName);
+      .createSignedUrl(uniqueFileName, 31536000); // 1 year = 365 * 24 * 60 * 60
 
-    const publicUrl = urlData.publicUrl;
-    console.log('🔗 Public URL generated:', publicUrl);
+    if (signedUrlError) {
+      console.error('❌ Signed URL generation error:', signedUrlError);
+      throw new Error(`Signed URL generation failed: ${signedUrlError.message}`);
+    }
+
+    const signedUrl = signedUrlData.signedUrl;
+    console.log('🔗 Signed URL generated:', signedUrl);
 
     // Handle thumbnail upload if provided
     let thumbnailUrl = null;
@@ -124,12 +129,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (thumbUploadError) {
           console.error('❌ Thumbnail upload error:', thumbUploadError);
         } else {
-          const { data: thumbUrlData } = supabase.storage
+          // Generate signed URL for thumbnail (expires in 1 year)
+          const { data: thumbSignedUrlData, error: thumbSignedUrlError } = await supabase.storage
             .from('media-files')
-            .getPublicUrl(thumbnailFileName);
+            .createSignedUrl(thumbnailFileName, 31536000);
           
-          thumbnailUrl = thumbUrlData.publicUrl;
-          console.log('✅ Thumbnail uploaded:', thumbnailUrl);
+          if (thumbSignedUrlError) {
+            console.error('❌ Thumbnail signed URL error:', thumbSignedUrlError);
+          } else {
+            thumbnailUrl = thumbSignedUrlData.signedUrl;
+            console.log('✅ Thumbnail uploaded with signed URL:', thumbnailUrl);
+          }
         }
       } catch (thumbError) {
         console.error('❌ Thumbnail processing error:', thumbError);
@@ -142,7 +152,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       name: name || fileName,
       type,
       size: fileBuffer.length,
-      url: publicUrl,
+      url: signedUrl, // Use signed URL instead of public URL
       category,
       tags,
       thumbnail: thumbnailUrl,
