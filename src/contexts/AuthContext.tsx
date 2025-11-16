@@ -92,8 +92,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             setUser(JSON.parse(storedUser));
             setTenant(JSON.parse(storedTenant));
 
-            // Verify token is still valid
-            await verifyToken(storedToken);
+            // Try to verify token, but don't logout if it fails
+            // This allows offline usage and handles network issues gracefully
+            verifyToken(storedToken).catch(error => {
+              console.warn('Token verification failed during initialization, but keeping session:', error);
+            });
           } catch (parseError) {
             console.error('JSON parse error in auth initialization:', parseError);
             clearAuthData();
@@ -120,7 +123,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       });
 
       if (!response.ok) {
-        throw new Error('Token verification failed');
+        console.warn('Token verification failed, but keeping existing session');
+        // Don't throw error - keep existing session data
+        return false;
       }
 
       const data = await response.json();
@@ -131,10 +136,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         // Update localStorage with fresh data
         localStorage.setItem('auth_user', JSON.stringify(data.data.user));
         localStorage.setItem('auth_tenant', JSON.stringify(data.data.tenant));
+        return true;
       }
+      return false;
     } catch (error) {
-      console.error('Token verification error:', error);
-      throw error;
+      console.warn('Token verification network error, keeping existing session:', error);
+      // Don't throw error on network issues - keep existing session
+      return false;
     }
   };
 

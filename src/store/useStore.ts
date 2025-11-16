@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import { api } from '../services/api';
 import toast from 'react-hot-toast';
 
@@ -179,562 +180,511 @@ interface StoreState {
   deleteSchedule: (id: string) => Promise<void>;
 }
 
-export const useStore = create<StoreState>((set, get) => ({
-  // Initial State
-  sidebarCollapsed: false,
-  theme: (localStorage.getItem('theme') as 'light' | 'dark') || 'light',
-  activeView: 'dashboard',
-  
-  devices: [],
-  mediaItems: [],
-  layouts: [],
-  playlists: [],
-  schedules: [],
-  layoutPresets: {},
-  layoutCategories: [],
-  
-  loading: {
-    devices: false,
-    media: false,
-    layouts: false,
-    playlists: false,
-    schedules: false,
-  },
-  hasUnsavedLayoutChanges: false,
-  setHasUnsavedLayoutChanges: (value: boolean) => set({ hasUnsavedLayoutChanges: value }),
-  triggerLayoutSave: 0,
-  setTriggerLayoutSave: () => set(state => ({ triggerLayoutSave: state.triggerLayoutSave + 1 })),
-  
-  // Actions
-  toggleSidebar: () => set(state => ({ sidebarCollapsed: !state.sidebarCollapsed })),
-  toggleTheme: () => set(state => {
-    const newTheme = state.theme === 'light' ? 'dark' : 'light';
-    localStorage.setItem('theme', newTheme);
-    return { theme: newTheme };
-  }),
-  setActiveView: (view: string) => set({ activeView: view }),
-  
-  // Data fetching
-  fetchDevices: async () => {
-    set(state => ({ loading: { ...state.loading, devices: true } }));
-    try {
-      const devices = await api.getDevices();
-      set({
-        devices: devices.map(d => ({
-          ...d,
-          id: d.id || '',
-          lastSeen: new Date(d.lastSeen || Date.now())
-        }))
-      });
-    } catch (error: any) {
-      toast.error('Cihazlar yüklenirken hata oluştu: ' + error.message);
-    } finally {
-      set(state => ({ loading: { ...state.loading, devices: false } }));
-    }
-  },
-  
-  fetchMediaItems: async () => {
-    set(state => ({ loading: { ...state.loading, media: true } }));
-    try {
-      const mediaItems = await api.getMediaItems();
-      set({
-        mediaItems: mediaItems.map(m => ({
-          ...m,
-          id: m.id || '',
-          uploadDate: new Date(m.createdAt || Date.now())
-        }))
-      });
-    } catch (error: any) {
-      toast.error('Medya öğeleri yüklenirken hata oluştu: ' + error.message);
-    } finally {
-      set(state => ({ loading: { ...state.loading, media: false } }));
-    }
-  },
-  
-  fetchLayouts: async (filters?: { category?: string; orientation?: string; search?: string }) => {
-    set(state => ({ loading: { ...state.loading, layouts: true } }));
-    try {
-      console.log('Store - Fetching layouts with filters:', filters);
+export const useStore = create<StoreState>()(
+  persist(
+    (set, get) => ({
+      // Initial State
+      sidebarCollapsed: false,
+      theme: 'light',
+      activeView: 'dashboard',
       
-      // Use api service for consistency
-      const layouts = await api.getLayouts();
-      console.log('Store - Layouts fetched:', Array.isArray(layouts) ? layouts.length : 'not array', layouts);
+      devices: [],
+      mediaItems: [],
+      layouts: [],
+      playlists: [],
+      schedules: [],
+      layoutPresets: {},
+      layoutCategories: [],
       
-      // Ensure layouts is always an array
-      const layoutsArray = Array.isArray(layouts) ? layouts : [];
+      loading: {
+        devices: false,
+        media: false,
+        layouts: false,
+        playlists: false,
+        schedules: false,
+      },
+      hasUnsavedLayoutChanges: false,
+      setHasUnsavedLayoutChanges: (value: boolean) => set({ hasUnsavedLayoutChanges: value }),
+      triggerLayoutSave: 0,
+      setTriggerLayoutSave: () => set(state => ({ triggerLayoutSave: state.triggerLayoutSave + 1 })),
       
-      // Ensure layouts have proper date objects and zone arrays
-      const processedLayouts = layoutsArray.map((l: any) => ({
-        ...l,
-        createdAt: new Date(l.createdAt || Date.now()),
-        zones: Array.isArray(l.zones) ? l.zones : []
-      }));
+      // Actions
+      toggleSidebar: () => set(state => ({ sidebarCollapsed: !state.sidebarCollapsed })),
+      toggleTheme: () => set(state => {
+        const newTheme = state.theme === 'light' ? 'dark' : 'light';
+        localStorage.setItem('theme', newTheme);
+        return { theme: newTheme };
+      }),
+      setActiveView: (view: string) => set({ activeView: view }),
       
-      console.log('Store - Processed layouts:', processedLayouts.length);
-      set({ layouts: processedLayouts });
-      return processedLayouts;
-    } catch (error: any) {
-      console.error('Store - Layout fetch error:', error);
-      toast.error('Layout\'lar yüklenirken hata oluştu: ' + error.message);
-      // Always ensure layouts is an array to prevent .map errors
-      set({ layouts: [] });
-      return [];
-    } finally {
-      set(state => ({ loading: { ...state.loading, layouts: false } }));
-    }
-  },
-
-  fetchLayoutPresets: async () => {
-    try {
-      const token = localStorage.getItem('auth_token');
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-      
-      const response = await fetch('/api/layouts?type=presets', { headers });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const presets = await response.json();
-      set({ layoutPresets: presets });
-    } catch (error: any) {
-      toast.error('Layout presets yüklenirken hata oluştu: ' + error.message);
-    }
-  },
-
-  fetchLayoutCategories: async () => {
-    try {
-      const token = localStorage.getItem('auth_token');
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-      
-      const response = await fetch('/api/layouts?type=categories', { headers });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const categories = await response.json();
-      set({ layoutCategories: categories });
-    } catch (error: any) {
-      toast.error('Layout kategorileri yüklenirken hata oluştu: ' + error.message);
-    }
-  },
-  
-  fetchPlaylists: async () => {
-    set(state => ({ loading: { ...state.loading, playlists: true } }));
-    try {
-      const playlists = await api.getPlaylists();
-      set({
-        playlists: playlists.map(p => ({
-          ...p,
-          id: p.id || '',
-          createdAt: new Date(p.createdAt || Date.now())
-        }))
-      });
-    } catch (error: any) {
-      toast.error('Playlist\'ler yüklenirken hata oluştu: ' + error.message);
-    } finally {
-      set(state => ({ loading: { ...state.loading, playlists: false } }));
-    }
-  },
-  
-  fetchSchedules: async () => {
-    set(state => ({ loading: { ...state.loading, schedules: true } }));
-    try {
-      const schedules = await api.getSchedules();
-      set({
-        schedules: schedules.map(s => ({
-          ...s,
-          id: s.id || '',
-          startDate: new Date(s.startDate || Date.now()),
-          endDate: new Date(s.endDate || Date.now())
-        }))
-      });
-    } catch (error: any) {
-      toast.error('Zamanlamalar yüklenirken hata oluştu: ' + error.message);
-    } finally {
-      set(state => ({ loading: { ...state.loading, schedules: false } }));
-    }
-  },
-  
-  fetchAll: async () => {
-    await Promise.all([
-      get().fetchDevices(),
-      get().fetchMediaItems(),
-      get().fetchLayouts(),
-      get().fetchPlaylists(),
-      get().fetchSchedules(),
-    ]);
-  },
-  
-  // Device Actions
-  addDevice: async (device) => {
-    try {
-      const newDevice = await api.createDevice(device);
-      set(state => ({
-        devices: [...state.devices, {
-          ...newDevice,
-          id: newDevice.id || '',
-          lastSeen: new Date(newDevice.lastSeen || Date.now())
-        }]
-      }));
-      toast.success('Cihaz başarıyla eklendi!');
-    } catch (error: any) {
-      toast.error('Cihaz eklenirken hata oluştu: ' + error.message);
-      throw error;
-    }
-  },
-  
-  updateDevice: async (id, updates) => {
-    try {
-      const updated = await api.updateDevice(id, updates);
-      set(state => ({
-        devices: state.devices.map(device =>
-          device.id === id ? {
-            ...updated,
-            id: updated.id || id,
-            lastSeen: new Date(updated.lastSeen || Date.now())
-          } : device
-        )
-      }));
-      toast.success('Cihaz güncellendi!');
-    } catch (error: any) {
-      toast.error('Cihaz güncellenirken hata oluştu: ' + error.message);
-      throw error;
-    }
-  },
-  
-  deleteDevice: async (id) => {
-    try {
-      await api.deleteDevice(id);
-      set(state => ({ devices: state.devices.filter(device => device.id !== id) }));
-      toast.success('Cihaz silindi!');
-    } catch (error: any) {
-      toast.error('Cihaz silinirken hata oluştu: ' + error.message);
-      throw error;
-    }
-  },
-  
-  // Media Actions
-  addMediaItem: async (item) => {
-    try {
-      const newItem = await api.createMediaItem(item);
-      set(state => ({
-        mediaItems: [...state.mediaItems, {
-          ...newItem,
-          id: newItem.id || '',
-          uploadDate: new Date(newItem.createdAt || Date.now())
-        }]
-      }));
-      toast.success('Medya öğesi eklendi!');
-    } catch (error: any) {
-      toast.error('Medya öğesi eklenirken hata oluştu: ' + error.message);
-      throw error;
-    }
-  },
-  
-  uploadMediaFile: async (file, data) => {
-    try {
-      // Send thumbnail to backend for processing
-      const newItem = await api.uploadMedia(file, data);
-      const itemWithDate = {
-        ...newItem,
-        id: newItem.id || '',
-        uploadDate: new Date(newItem.createdAt || Date.now())
-      };
-      set(state => ({
-        mediaItems: [...state.mediaItems, itemWithDate]
-      }));
-      toast.success('Dosya yüklendi!');
-      return itemWithDate; // Return the new item so we can use its ID
-    } catch (error: any) {
-      toast.error('Dosya yüklenirken hata oluştu: ' + error.message);
-      throw error;
-    }
-  },
-  
-  deleteMediaItem: async (id) => {
-    try {
-      await api.deleteMediaItem(id);
-      set(state => ({ mediaItems: state.mediaItems.filter(item => item.id !== id) }));
-      toast.success('Medya öğesi silindi!');
-    } catch (error: any) {
-      toast.error('Medya öğesi silinirken hata oluştu: ' + error.message);
-      throw error;
-    }
-  },
-  
-  // Layout Actions
-  addLayout: async (layout) => {
-    try {
-      // Validate layout data before sending
-      if (!layout.name || !layout.name.trim()) {
-        throw new Error('Layout ismi gereklidir');
-      }
-      
-      if (!layout.zones || !Array.isArray(layout.zones) || layout.zones.length === 0) {
-        throw new Error('En az bir bölge gereklidir');
-      }
-      
-      // Validate zones
-      for (const zone of layout.zones) {
-        if (!zone.type || !['media', 'text', 'clock', 'weather', 'rss', 'widgets', 'playlist'].includes(zone.type)) {
-          throw new Error('Geçersiz bölge türü');
+      // Data fetching
+      fetchDevices: async () => {
+        set(state => ({ loading: { ...state.loading, devices: true } }));
+        try {
+          const devices = await api.getDevices();
+          set({
+            devices: devices.map(d => ({
+              ...d,
+              id: d.id || '',
+              lastSeen: new Date(d.lastSeen || Date.now())
+            }))
+          });
+        } catch (error: any) {
+          toast.error('Cihazlar yüklenirken hata oluştu: ' + error.message);
+        } finally {
+          set(state => ({ loading: { ...state.loading, devices: false } }));
         }
-        if (typeof zone.x !== 'number' || typeof zone.y !== 'number' ||
-            typeof zone.width !== 'number' || typeof zone.height !== 'number') {
-          throw new Error('Bölge boyutları sayısal olmalıdır');
+      },
+      
+      fetchMediaItems: async () => {
+        set(state => ({ loading: { ...state.loading, media: true } }));
+        try {
+          const mediaItems = await api.getMediaItems();
+          set({
+            mediaItems: mediaItems.map(m => ({
+              ...m,
+              id: m.id || '',
+              uploadDate: new Date(m.createdAt || Date.now())
+            }))
+          });
+        } catch (error: any) {
+          toast.error('Medya öğeleri yüklenirken hata oluştu: ' + error.message);
+        } finally {
+          set(state => ({ loading: { ...state.loading, media: false } }));
         }
-      }
+      },
       
-      console.log('Store - Adding layout:', layout);
-      
-      const token = localStorage.getItem('auth_token');
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-      
-      const response = await fetch('/api/layouts', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(layout)
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        console.error('Store - Add layout error:', response.status, errorData);
-        throw new Error(errorData.error || `HTTP ${response.status}`);
-      }
-      
-      const newLayout = await response.json();
-      console.log('Store - Layout added:', newLayout);
-      
-      set(state => ({
-        layouts: [...state.layouts, {
-          ...newLayout,
-          createdAt: new Date(newLayout.createdAt),
-          zones: Array.isArray(newLayout.zones) ? newLayout.zones : []
-        }]
-      }));
-      toast.success('Layout başarıyla eklendi!');
-    } catch (error: any) {
-      console.error('Store - Add layout error:', error);
-      toast.error('Layout eklenirken hata oluştu: ' + error.message);
-      throw error;
-    }
-  },
+      fetchLayouts: async (filters?: { category?: string; orientation?: string; search?: string }) => {
+        set(state => ({ loading: { ...state.loading, layouts: true } }));
+        try {
+          const layouts = await api.getLayouts();
+          const layoutsArray = Array.isArray(layouts) ? layouts : [];
+          const processedLayouts = layoutsArray.map((l: any) => ({
+            ...l,
+            createdAt: new Date(l.createdAt || Date.now()),
+            zones: Array.isArray(l.zones) ? l.zones : []
+          }));
+          
+          set({ layouts: processedLayouts });
+          return processedLayouts;
+        } catch (error: any) {
+          toast.error('Layout\'lar yüklenirken hata oluştu: ' + error.message);
+          set({ layouts: [] });
+          return [];
+        } finally {
+          set(state => ({ loading: { ...state.loading, layouts: false } }));
+        }
+      },
 
-  updateLayout: async (id, layout) => {
-    try {
-      // Validate layout data before sending
-      if (layout.name && !layout.name.trim()) {
-        throw new Error('Layout ismi boş olamaz');
-      }
-      
-      if (layout.zones && Array.isArray(layout.zones)) {
-        // Validate zones if provided
-        for (const zone of layout.zones) {
-          if (!zone.type || !['media', 'text', 'clock', 'weather', 'rss', 'widgets', 'playlist'].includes(zone.type)) {
-            throw new Error('Geçersiz bölge türü');
+      fetchLayoutPresets: async () => {
+        try {
+          const token = localStorage.getItem('auth_token');
+          const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+          };
+          
+          if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
           }
-          if (typeof zone.x !== 'number' || typeof zone.y !== 'number' ||
-              typeof zone.width !== 'number' || typeof zone.height !== 'number') {
-            throw new Error('Bölge boyutları sayısal olmalıdır');
+          
+          const response = await fetch('/api/layouts?type=presets', { headers });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const presets = await response.json();
+          set({ layoutPresets: presets });
+        } catch (error: any) {
+          toast.error('Layout presets yüklenirken hata oluştu: ' + error.message);
+        }
+      },
+
+      fetchLayoutCategories: async () => {
+        try {
+          const token = localStorage.getItem('auth_token');
+          const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+          };
+          
+          if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
           }
+          
+          const response = await fetch('/api/layouts?type=categories', { headers });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const categories = await response.json();
+          set({ layoutCategories: categories });
+        } catch (error: any) {
+          toast.error('Layout kategorileri yüklenirken hata oluştu: ' + error.message);
+        }
+      },
+      
+      fetchPlaylists: async () => {
+        set(state => ({ loading: { ...state.loading, playlists: true } }));
+        try {
+          const playlists = await api.getPlaylists();
+          set({
+            playlists: playlists.map(p => ({
+              ...p,
+              id: p.id || '',
+              createdAt: new Date(p.createdAt || Date.now())
+            }))
+          });
+        } catch (error: any) {
+          toast.error('Playlist\'ler yüklenirken hata oluştu: ' + error.message);
+        } finally {
+          set(state => ({ loading: { ...state.loading, playlists: false } }));
+        }
+      },
+      
+      fetchSchedules: async () => {
+        set(state => ({ loading: { ...state.loading, schedules: true } }));
+        try {
+          const schedules = await api.getSchedules();
+          set({
+            schedules: schedules.map(s => ({
+              ...s,
+              id: s.id || '',
+              startDate: new Date(s.startDate || Date.now()),
+              endDate: new Date(s.endDate || Date.now())
+            }))
+          });
+        } catch (error: any) {
+          toast.error('Zamanlamalar yüklenirken hata oluştu: ' + error.message);
+        } finally {
+          set(state => ({ loading: { ...state.loading, schedules: false } }));
+        }
+      },
+      
+      fetchAll: async () => {
+        await Promise.all([
+          get().fetchDevices(),
+          get().fetchMediaItems(),
+          get().fetchLayouts(),
+          get().fetchPlaylists(),
+          get().fetchSchedules(),
+        ]);
+      },
+      
+      // Device Actions
+      addDevice: async (device) => {
+        try {
+          const newDevice = await api.createDevice(device);
+          set(state => ({
+            devices: [...state.devices, {
+              ...newDevice,
+              id: newDevice.id || '',
+              lastSeen: new Date(newDevice.lastSeen || Date.now())
+            }]
+          }));
+          toast.success('Cihaz başarıyla eklendi!');
+        } catch (error: any) {
+          toast.error('Cihaz eklenirken hata oluştu: ' + error.message);
+          throw error;
+        }
+      },
+      
+      updateDevice: async (id, updates) => {
+        try {
+          const updated = await api.updateDevice(id, updates);
+          set(state => ({
+            devices: state.devices.map(device =>
+              device.id === id ? {
+                ...updated,
+                id: updated.id || id,
+                lastSeen: new Date(updated.lastSeen || Date.now())
+              } : device
+            )
+          }));
+          toast.success('Cihaz güncellendi!');
+        } catch (error: any) {
+          toast.error('Cihaz güncellenirken hata oluştu: ' + error.message);
+          throw error;
+        }
+      },
+      
+      deleteDevice: async (id) => {
+        try {
+          await api.deleteDevice(id);
+          set(state => ({ devices: state.devices.filter(device => device.id !== id) }));
+          toast.success('Cihaz silindi!');
+        } catch (error: any) {
+          toast.error('Cihaz silinirken hata oluştu: ' + error.message);
+          throw error;
+        }
+      },
+      
+      // Media Actions
+      addMediaItem: async (item) => {
+        try {
+          const newItem = await api.createMediaItem(item);
+          set(state => ({
+            mediaItems: [...state.mediaItems, {
+              ...newItem,
+              id: newItem.id || '',
+              uploadDate: new Date(newItem.createdAt || Date.now())
+            }]
+          }));
+          toast.success('Medya öğesi eklendi!');
+        } catch (error: any) {
+          toast.error('Medya öğesi eklenirken hata oluştu: ' + error.message);
+          throw error;
+        }
+      },
+      
+      uploadMediaFile: async (file, data) => {
+        try {
+          const newItem = await api.uploadMedia(file, data);
+          const itemWithDate = {
+            ...newItem,
+            id: newItem.id || '',
+            uploadDate: new Date(newItem.createdAt || Date.now())
+          };
+          set(state => ({
+            mediaItems: [...state.mediaItems, itemWithDate]
+          }));
+          toast.success('Dosya yüklendi!');
+          return itemWithDate;
+        } catch (error: any) {
+          toast.error('Dosya yüklenirken hata oluştu: ' + error.message);
+          throw error;
+        }
+      },
+      
+      deleteMediaItem: async (id) => {
+        try {
+          await api.deleteMediaItem(id);
+          set(state => ({ mediaItems: state.mediaItems.filter(item => item.id !== id) }));
+          toast.success('Medya öğesi silindi!');
+        } catch (error: any) {
+          toast.error('Medya öğesi silinirken hata oluştu: ' + error.message);
+          throw error;
+        }
+      },
+      
+      // Layout Actions
+      addLayout: async (layout) => {
+        try {
+          const token = localStorage.getItem('auth_token');
+          const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+          };
+          
+          if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+          }
+          
+          const response = await fetch('/api/layouts', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(layout)
+          });
+          
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+            throw new Error(errorData.error || `HTTP ${response.status}`);
+          }
+          
+          const newLayout = await response.json();
+          
+          set(state => ({
+            layouts: [...state.layouts, {
+              ...newLayout,
+              createdAt: new Date(newLayout.createdAt),
+              zones: Array.isArray(newLayout.zones) ? newLayout.zones : []
+            }]
+          }));
+          toast.success('Layout başarıyla eklendi!');
+        } catch (error: any) {
+          toast.error('Layout eklenirken hata oluştu: ' + error.message);
+          throw error;
+        }
+      },
+
+      updateLayout: async (id, layout) => {
+        try {
+          const token = localStorage.getItem('auth_token');
+          const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+          };
+          
+          if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+          }
+          
+          const response = await fetch(`/api/layouts/${id}`, {
+            method: 'PUT',
+            headers,
+            body: JSON.stringify(layout)
+          });
+          
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+            throw new Error(errorData.error || `HTTP ${response.status}`);
+          }
+          
+          const updated = await response.json();
+          
+          set(state => ({
+            layouts: state.layouts.map(l =>
+              l.id === id ? {
+                ...updated,
+                createdAt: new Date(updated.createdAt),
+                zones: Array.isArray(updated.zones) ? updated.zones : []
+              } : l
+            )
+          }));
+          toast.success('Layout başarıyla güncellendi!');
+        } catch (error: any) {
+          toast.error('Layout güncellenirken hata oluştu: ' + error.message);
+          throw error;
+        }
+      },
+
+      deleteLayout: async (id) => {
+        try {
+          const token = localStorage.getItem('auth_token');
+          const headers: Record<string, string> = {};
+          
+          if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+          }
+          
+          const response = await fetch(`/api/layouts/${id}`, {
+            method: 'DELETE',
+            headers
+          });
+          
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+            throw new Error(errorData.error || `HTTP ${response.status}`);
+          }
+          
+          set(state => ({ layouts: state.layouts.filter(layout => layout.id !== id) }));
+          toast.success('Layout başarıyla silindi!');
+        } catch (error: any) {
+          toast.error('Layout silinirken hata oluştu: ' + error.message);
+          throw error;
+        }
+      },
+
+      validateLayoutName: (name: string, excludeId?: string) => {
+        const { layouts } = get();
+        const existingLayout = layouts.find(l =>
+          l.name.toLowerCase() === name.toLowerCase() && l.id !== excludeId
+        );
+        return !existingLayout;
+      },
+      
+      // Playlist Actions
+      addPlaylist: async (playlist) => {
+        try {
+          const newPlaylist = await api.createPlaylist(playlist);
+          set(state => ({
+            playlists: [...state.playlists, {
+              ...newPlaylist,
+              id: newPlaylist.id || '',
+              createdAt: new Date(newPlaylist.createdAt || Date.now())
+            }]
+          }));
+          toast.success('Playlist eklendi!');
+        } catch (error: any) {
+          toast.error('Playlist eklenirken hata oluştu: ' + error.message);
+          throw error;
+        }
+      },
+      
+      updatePlaylist: async (id, playlist) => {
+        try {
+          const updated = await api.updatePlaylist(id, playlist);
+          set(state => ({
+            playlists: state.playlists.map(p =>
+              p.id === id ? {
+                ...updated,
+                id: updated.id || id,
+                createdAt: new Date(updated.createdAt || Date.now())
+              } : p
+            )
+          }));
+          toast.success('Playlist güncellendi!');
+        } catch (error: any) {
+          toast.error('Playlist güncellenirken hata oluştu: ' + error.message);
+          throw error;
+        }
+      },
+      
+      deletePlaylist: async (id) => {
+        try {
+          await api.deletePlaylist(id);
+          set(state => ({ playlists: state.playlists.filter(playlist => playlist.id !== id) }));
+          toast.success('Playlist silindi!');
+        } catch (error: any) {
+          toast.error('Playlist silinirken hata oluştu: ' + error.message);
+          throw error;
+        }
+      },
+      
+      // Schedule Actions
+      addSchedule: async (schedule) => {
+        try {
+          const newSchedule = await api.createSchedule(schedule);
+          set(state => ({
+            schedules: [...state.schedules, {
+              ...newSchedule,
+              id: newSchedule.id || '',
+              startDate: new Date(newSchedule.startDate || Date.now()),
+              endDate: new Date(newSchedule.endDate || Date.now())
+            }]
+          }));
+          toast.success('Zamanlama eklendi!');
+        } catch (error: any) {
+          toast.error('Zamanlama eklenirken hata oluştu: ' + error.message);
+          throw error;
+        }
+      },
+      
+      updateSchedule: async (id, updates) => {
+        try {
+          const updated = await api.updateSchedule(id, updates);
+          set(state => ({
+            schedules: state.schedules.map(schedule =>
+              schedule.id === id ? {
+                ...updated,
+                id: updated.id || id,
+                startDate: new Date(updated.startDate || Date.now()),
+                endDate: new Date(updated.endDate || Date.now())
+              } : schedule
+            )
+          }));
+          toast.success('Zamanlama güncellendi!');
+        } catch (error: any) {
+          toast.error('Zamanlama güncellenirken hata oluştu: ' + error.message);
+          throw error;
+        }
+      },
+      
+      deleteSchedule: async (id) => {
+        try {
+          await api.deleteSchedule(id);
+          set(state => ({ schedules: state.schedules.filter(schedule => schedule.id !== id) }));
+          toast.success('Zamanlama silindi!');
+        } catch (error: any) {
+          toast.error('Zamanlama silinirken hata oluştu: ' + error.message);
+          throw error;
         }
       }
-      
-      console.log('Store - Updating layout:', id, layout);
-      
-      const token = localStorage.getItem('auth_token');
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-      
-      const response = await fetch(`/api/layouts/${id}`, {
-        method: 'PUT',
-        headers,
-        body: JSON.stringify(layout)
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        console.error('Store - Update layout error:', response.status, errorData);
-        throw new Error(errorData.error || `HTTP ${response.status}`);
-      }
-      
-      const updated = await response.json();
-      console.log('Store - Layout updated:', updated);
-      
-      set(state => ({
-        layouts: state.layouts.map(l =>
-          l.id === id ? {
-            ...updated,
-            createdAt: new Date(updated.createdAt),
-            zones: Array.isArray(updated.zones) ? updated.zones : []
-          } : l
-        )
-      }));
-      toast.success('Layout başarıyla güncellendi!');
-    } catch (error: any) {
-      console.error('Store - Update layout error:', error);
-      toast.error('Layout güncellenirken hata oluştu: ' + error.message);
-      throw error;
+    }),
+    {
+      name: 'creatiwall-store',
+      partialize: (state) => ({
+        // Persist only essential data, not loading states
+        mediaItems: state.mediaItems,
+        layouts: state.layouts,
+        playlists: state.playlists,
+        schedules: state.schedules,
+        devices: state.devices,
+        layoutPresets: state.layoutPresets,
+        layoutCategories: state.layoutCategories,
+        theme: state.theme,
+        sidebarCollapsed: state.sidebarCollapsed,
+      }),
     }
-  },
-
-  deleteLayout: async (id) => {
-    try {
-      if (!id || typeof id !== 'string') {
-        throw new Error('Geçersiz layout ID');
-      }
-      
-      console.log('Store - Deleting layout:', id);
-      
-      const token = localStorage.getItem('auth_token');
-      const headers: Record<string, string> = {};
-      
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-      
-      const response = await fetch(`/api/layouts/${id}`, {
-        method: 'DELETE',
-        headers
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        console.error('Store - Delete layout error:', response.status, errorData);
-        throw new Error(errorData.error || `HTTP ${response.status}`);
-      }
-      
-      console.log('Store - Layout deleted:', id);
-      
-      set(state => ({ layouts: state.layouts.filter(layout => layout.id !== id) }));
-      toast.success('Layout başarıyla silindi!');
-    } catch (error: any) {
-      console.error('Store - Delete layout error:', error);
-      toast.error('Layout silinirken hata oluştu: ' + error.message);
-      throw error;
-    }
-  },
-
-  validateLayoutName: (name: string, excludeId?: string) => {
-    const { layouts } = get();
-    const existingLayout = layouts.find(l =>
-      l.name.toLowerCase() === name.toLowerCase() && l.id !== excludeId
-    );
-    return !existingLayout;
-  },
-  
-  // Playlist Actions
-  addPlaylist: async (playlist) => {
-    try {
-      const newPlaylist = await api.createPlaylist(playlist);
-      set(state => ({
-        playlists: [...state.playlists, {
-          ...newPlaylist,
-          id: newPlaylist.id || '',
-          createdAt: new Date(newPlaylist.createdAt || Date.now())
-        }]
-      }));
-      toast.success('Playlist eklendi!');
-    } catch (error: any) {
-      toast.error('Playlist eklenirken hata oluştu: ' + error.message);
-      throw error;
-    }
-  },
-  
-  updatePlaylist: async (id, playlist) => {
-    try {
-      const updated = await api.updatePlaylist(id, playlist);
-      set(state => ({
-        playlists: state.playlists.map(p =>
-          p.id === id ? {
-            ...updated,
-            id: updated.id || id,
-            createdAt: new Date(updated.createdAt || Date.now())
-          } : p
-        )
-      }));
-      toast.success('Playlist güncellendi!');
-    } catch (error: any) {
-      toast.error('Playlist güncellenirken hata oluştu: ' + error.message);
-      throw error;
-    }
-  },
-  
-  deletePlaylist: async (id) => {
-    try {
-      await api.deletePlaylist(id);
-      set(state => ({ playlists: state.playlists.filter(playlist => playlist.id !== id) }));
-      toast.success('Playlist silindi!');
-    } catch (error: any) {
-      toast.error('Playlist silinirken hata oluştu: ' + error.message);
-      throw error;
-    }
-  },
-  
-  // Schedule Actions
-  addSchedule: async (schedule) => {
-    try {
-      const newSchedule = await api.createSchedule(schedule);
-      set(state => ({
-        schedules: [...state.schedules, {
-          ...newSchedule,
-          id: newSchedule.id || '',
-          startDate: new Date(newSchedule.startDate || Date.now()),
-          endDate: new Date(newSchedule.endDate || Date.now())
-        }]
-      }));
-      toast.success('Zamanlama eklendi!');
-    } catch (error: any) {
-      toast.error('Zamanlama eklenirken hata oluştu: ' + error.message);
-      throw error;
-    }
-  },
-  
-  updateSchedule: async (id, updates) => {
-    try {
-      const updated = await api.updateSchedule(id, updates);
-      set(state => ({
-        schedules: state.schedules.map(schedule =>
-          schedule.id === id ? {
-            ...updated,
-            id: updated.id || id,
-            startDate: new Date(updated.startDate || Date.now()),
-            endDate: new Date(updated.endDate || Date.now())
-          } : schedule
-        )
-      }));
-      toast.success('Zamanlama güncellendi!');
-    } catch (error: any) {
-      toast.error('Zamanlama güncellenirken hata oluştu: ' + error.message);
-      throw error;
-    }
-  },
-  
-  deleteSchedule: async (id) => {
-    try {
-      await api.deleteSchedule(id);
-      set(state => ({ schedules: state.schedules.filter(schedule => schedule.id !== id) }));
-      toast.success('Zamanlama silindi!');
-    } catch (error: any) {
-      toast.error('Zamanlama silinirken hata oluştu: ' + error.message);
-      throw error;
-    }
-  }
-}));
+  )
+);

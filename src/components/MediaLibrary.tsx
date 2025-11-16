@@ -4,6 +4,7 @@ import { Image, Video, Music, Plus, Search, Grid, List, Filter, Download, Trash2
 import { useStore } from '../store/useStore';
 import toast from 'react-hot-toast';
 import { generateVideoThumbnail } from '../utils/videoThumbnail';
+import { uploadLargeFile } from '../utils/chunkUpload';
 
 const MediaLibrary = () => {
   const { mediaItems, uploadMediaFile, deleteMediaItem } = useStore();
@@ -55,7 +56,7 @@ const MediaLibrary = () => {
       
       if (isVideo) {
         console.log('Video detected, starting thumbnail generation...');
-        setUploadProgress(20);
+        setUploadProgress(10);
         setUploadStatus('Video thumbnail oluşturuluyor...');
         
         try {
@@ -72,6 +73,8 @@ const MediaLibrary = () => {
           if (thumbnail) {
             console.log('Thumbnail generated successfully, length:', thumbnail.length);
             toast.success('Thumbnail oluşturuldu!', { id: 'thumbnail' });
+            setUploadProgress(20);
+            setUploadStatus('Thumbnail oluşturuldu!');
           } else {
             console.warn('Thumbnail generation returned null');
             toast.error('Thumbnail oluşturulamadı', { id: 'thumbnail' });
@@ -83,29 +86,84 @@ const MediaLibrary = () => {
         }
       } else {
         console.log('Not a video, skipping thumbnail generation');
+        setUploadProgress(20);
       }
 
       console.log('Uploading file with thumbnail:', thumbnail ? 'Yes' : 'No');
       
-      setUploadProgress(60);
-      setUploadStatus('Dosya sunucuya yükleniyor...');
+      // Check file size and use appropriate upload method
+      const fileSize = file.size;
+      const fileSizeMB = fileSize / (1024 * 1024);
       
-      // Upload file with thumbnail
-      const newItem = await uploadMediaFile(file, {
-        ...mediaData,
-        ...(thumbnail && { thumbnail })
-      });
+      console.log(`File size: ${fileSizeMB.toFixed(2)}MB`);
       
-      setUploadProgress(90);
-      setUploadStatus('Upload tamamlanıyor...');
-      
-      // Store thumbnail in frontend state if generated
-      if (thumbnail && newItem?.id) {
-        console.log('Storing thumbnail in frontend state for item:', newItem.id);
-        setVideoThumbnails(prev => ({
-          ...prev,
-          [newItem.id]: thumbnail
-        }));
+      if (fileSizeMB > 10) {
+        // Use chunk upload for files larger than 10MB
+        console.log('Large file detected, using chunk upload system');
+        setUploadStatus('Büyük dosya tespit edildi, parçalı yükleme başlatılıyor...');
+        
+        const result = await uploadLargeFile(file, {
+          ...mediaData,
+          ...(thumbnail && { thumbnail })
+        }, {
+          onProgress: (progress) => {
+            // Map chunk progress to our progress (20-90%)
+            const mappedProgress = 20 + (progress * 0.7);
+            setUploadProgress(Math.round(mappedProgress));
+          },
+          onChunkProgress: (chunkIndex, totalChunks) => {
+            setUploadStatus(`Parça ${chunkIndex}/${totalChunks} yükleniyor...`);
+          }
+        });
+        
+        if (!result.success) {
+          throw new Error(result.error || 'Chunk upload failed');
+        }
+        
+        // Add to store manually since we're not using uploadMediaFile
+        const itemWithDate = {
+          ...result.data,
+          id: result.data.id || '',
+          uploadDate: new Date(result.data.createdAt || Date.now())
+        };
+        
+        // Store thumbnail in frontend state if generated
+        if (thumbnail && itemWithDate.id) {
+          console.log('Storing thumbnail in frontend state for item:', itemWithDate.id);
+          setVideoThumbnails(prev => ({
+            ...prev,
+            [itemWithDate.id]: thumbnail
+          }));
+        }
+        
+        // Update store
+        const { mediaItems } = useStore.getState();
+        useStore.setState({ mediaItems: [...mediaItems, itemWithDate] });
+        
+        toast.success('Büyük dosya başarıyla yüklendi!');
+        
+      } else {
+        // Use regular upload for smaller files
+        console.log('Regular file size, using standard upload');
+        setUploadProgress(30);
+        setUploadStatus('Dosya sunucuya yükleniyor...');
+        
+        const newItem = await uploadMediaFile(file, {
+          ...mediaData,
+          ...(thumbnail && { thumbnail })
+        });
+        
+        setUploadProgress(80);
+        setUploadStatus('Upload tamamlanıyor...');
+        
+        // Store thumbnail in frontend state if generated
+        if (thumbnail && newItem?.id) {
+          console.log('Storing thumbnail in frontend state for item:', newItem.id);
+          setVideoThumbnails(prev => ({
+            ...prev,
+            [newItem.id]: thumbnail
+          }));
+        }
       }
       
       setUploadProgress(100);
@@ -123,7 +181,7 @@ const MediaLibrary = () => {
       setIsUploading(false);
       setUploadProgress(0);
       setUploadStatus('');
-      // Error is already handled in store
+      toast.error('Upload hatası: ' + (error instanceof Error ? error.message : 'Bilinmeyen hata'));
     }
   };
 
